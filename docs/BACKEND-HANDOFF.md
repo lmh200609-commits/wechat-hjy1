@@ -1,6 +1,6 @@
 # 后端交接与 API 契约
 
-> 版本：1.1（后端开发基线，2026-08-01）  
+> 版本：1.2（前后端共享配置基线，2026-08-02）
 > 事实基线：当前 `miniprogram` 原生微信小程序代码、`data/*`、`utils/shop-store.js`、`utils/admin-store.js`、`app.json` 与现有分析文档。  
 > 本文只定义后端边界和建议契约，不代表模拟数据已成为正式数据库数据，也不包含后端实现代码。
 
@@ -22,6 +22,9 @@
 - 商品图库、Banner、合集封面、文章封面和文章正文图片已统一为“添加/更换/删除”交互；本地文件仅是模拟实现，正式环境必须先上传媒体再提交媒体 ID。
 - 文玩志正文是可排序的结构化内容块，类型仅限 `HEADING/PARAGRAPH/IMAGE`，支持多张正文图片，不保存 HTML。
 - 合集中的商品是有序多选关系，前台必须按管理员配置顺序展示，并过滤不可见商品。
+- 当前模拟态已增加 `utils/public-data.js` 作为用户端读取边界；分类、搜索、文玩志、商品详情和合集详情在页面重新显示时会读取最新管理配置，不再保留过期数组快照。正式 API 接入应替换该边界，而不应让页面直连后端字段。
+- 分类或材质改名会立即同步当前模拟商品、首页快捷入口和相关展示字段；正式后端必须使用稳定 `categoryId/materialId` 维持关联，改名只修改展示名，不级联替换业务外键。
+- 模拟订单项现已保存 `productName/productSubtitle/productImage` 不可变展示快照；商品后续改名或删除不得改变历史订单。
 - 本节内容是后端 DTO、数据库关系和管理 API 的冻结依据；后端不得回退为旧的 `to` 路径、单图文章或固定首页五分类。
 
 ## 1. 当前用户端 14 个页面与后端数据
@@ -31,8 +34,8 @@
 | # | 当前页面 | 页面参数 | 页面需要的后端数据 | 当前模拟数据及字段 | 建议 API |
 |---|---|---|---|---|---|
 | 1 | `pages/home/index` 首页 | 无 | 首页配置、可见 Banner、分类入口、精选商品、新品、合集、推荐文章、购物车数量 | `getPublicHomeData()`：`banners`、`categories`、`featuredProducts`、`newArrivals`、`collections`、`articles`、`homeConfig`；商品卡字段见第 2 节 | `GET /api/v1/home`；身份接入后另取 `GET /api/v1/me/summary` |
-| 2 | `pages/search/index` 搜索 | `q`：初始关键词 | 热门词、商品搜索结果；历史词仅保存在本机 | `hotKeywords[]`；`wenwan-search-history: string[]`；结果使用商品的 `name/subtitle/material/category/craft/tags` 做本地包含匹配 | `GET /api/v1/search/hot-keywords`；`GET /api/v1/products?keyword=...`；不提供搜索历史云端接口 |
-| 3 | `pages/category/index` 分类/商品列表 | `category`、`material`，当前传中文名称 | 商品分类、材质分类、筛选后的商品摘要、总数和分页状态 | `categories[]`、`materials[]`；商品数组；本地 `PAGE_SIZE=8`，字段 `activeCategory/activeMaterial/page/total/hasMore` | `GET /api/v1/categories`；`GET /api/v1/products` |
+| 2 | `pages/search/index` 搜索 | `q`：初始关键词 | 热门词、商品搜索结果；历史词仅保存在本机 | `public-data.getSearchData()`；模拟态热词由当前材质/分类/标签去重派生；`wenwan-search-history: string[]`；商品字段本地包含匹配 | `GET /api/v1/search/hot-keywords`；`GET /api/v1/products?keyword=...`；不提供搜索历史云端接口 |
+| 3 | `pages/category/index` 分类/商品列表 | 模拟态兼容 `category`、`material` 中文名；正式改为 `categoryId`、`materialId` | 商品分类、材质分类、筛选后的商品摘要、总数和分页状态 | `public-data.getCatalog()`；页面 `onShow` 刷新；已选分类失效时自动回退“全部”；本地 `PAGE_SIZE=8` | `GET /api/v1/categories`；`GET /api/v1/products` |
 | 4 | `pages/journal/index` 文玩志列表 | `tag`，当前传中文名称 | 文章标签、已发布文章摘要、总数、分页 | `tags[]`；`articles[]` 的 `id/title/tag/image/summary/date/author/minutes`；本地 `PAGE_SIZE=4` | `GET /api/v1/article-tags`；`GET /api/v1/articles` |
 | 5 | `pages/journal/detail/index` 文章详情 | `id` | 文章完整正文、封面、元信息、同标签相关文章 | `article` 全字段；`contentBlocks[{id,type,text?/url?/caption?}]`；`related[]`；旧 `body[]` 仅用于本地数据迁移兼容 | `GET /api/v1/articles/:articleId` |
 | 6 | `pages/product/detail/index` 商品详情 | `id` | 商品详情、图片、规格/SKU、库存、参数、说明、标签、同类推荐；身份接入后收藏状态和购物车数 | `product`；`images/variants/specs/params/detail/tags/active/status`；选中 SKU 的 `priceValue/originPriceValue/stock/enabled`；`favorite/cartCount/similarProducts` | `GET /api/v1/products/:productId`；后续 `PUT/DELETE /api/v1/me/favorites/:productId` |
@@ -43,7 +46,7 @@
 | 11 | `pages/mine/index` 个人中心 | 无 | 内部用户资料、订单/收藏/地址数量、购物车数量、管理员入口仅作为导航 | 当前没有用户实体；直接统计 `orders/favorites/addresses/cart` | `GET /api/v1/me`；`GET /api/v1/me/summary` |
 | 12 | `pages/orders/index` 我的订单 | 当前无 URL 参数；页面内筛选 | 当前用户订单分页列表、状态筛选、订单项快照、收货信息、取消能力 | `orders[]: id/no/createdAt/status/items/total/address/remark/confirmedAt`；状态 `pending/confirmed/cancelled` | `GET /api/v1/me/orders?status=...`；`POST /api/v1/me/orders/:id/cancel` |
 | 13 | `pages/favorites/index` 我的收藏 | 无 | 当前用户收藏商品分页列表、商品实时可售状态 | `favorites: productId[]`，页面本地关联 `products` | `GET /api/v1/me/favorites`；`PUT/DELETE /api/v1/me/favorites/:productId` |
-| 14 | `pages/order/success/index` 下单成功 | `no`：订单号 | 由后端重新读取的订单结果摘要，不能只相信页面 query | 按 `no` 从本地 `orders` 查找；字段 `orderNo/itemCount/totalText`，找不到时会回退第一单 | `GET /api/v1/me/orders/by-no/:orderNo` |
+| 14 | `pages/order/success/index` 下单成功 | `no`：订单号 | 由后端重新读取的订单结果摘要，不能只相信页面 query | 仅按 `no` 从本地 `orders` 查找；字段 `orderNo/itemCount/totalText`，找不到时不再错误回退到其他订单 | `GET /api/v1/me/orders/by-no/:orderNo` |
 
 ### 页面状态字段说明
 
@@ -55,8 +58,8 @@
 
 | 对象 | 当前字段 |
 |---|---|
-| 分类 | `categories: string[]`，首项是“全部” |
-| 材质 | `materials: string[]`，首项是“全部” |
+| 分类 | `categories: string[]`，首项是“全部”；经 `admin-store` 去空、去重、限长和排序，由 `public-data` 动态供用户端读取 |
+| 材质 | `materials: string[]`，首项是“全部”；与商品分类是两个独立维度 |
 | 商品 | `id`、`name`、`subtitle`、`price`、`priceValue`、`originPrice`、`originPriceValue`、`material`、`category`、`craft`、`image`、`images`、`sales`、`status`、`specs`、`variants[]`、`params[{label,value}]`、`detail[]`、`tags[]`、`stock`、`lowStockThreshold`、`active` |
 | 商品规格/SKU | `id`、`specLabel`、`priceValue`、`originPriceValue`、`stock`、`lowStockThreshold`、`enabled`；无规格商品也有“默认规格” |
 
@@ -80,7 +83,7 @@
 | 地址 | `id`、`name`、`phone`、`region`、`detail`、`isDefault` |
 | 待结算 | `source: cart/buyNow`、`items[{cartItemId?,productId,variantId,spec,qty,price}]` |
 | 订单 | `id`、`no`、`createdAt`、`status`、`items[]`、`total`、`remark?`、`address`、`confirmedAt?` |
-| 订单项 | `productId`、`variantId`、`spec`、`qty`、`price` |
+| 订单项 | `productId`、`variantId`、`spec`、`qty`、`price`、`productName`、`productSubtitle`、`productImage`；后三项为下单时展示快照 |
 | 运行时库存 | `inventory: { [variantId]: number }` |
 | 其他 | `selectedAddressId`、`demoSeedVersion` |
 
@@ -137,6 +140,8 @@
 | `sort_order` | INT / number | 是 | 越小越靠前 |
 | `enabled` | TINYINT(1) / boolean | 是 | 是否可用于前台筛选 |
 | `created_at`、`updated_at` | DATETIME(3) / string | 是 | 审计时间 |
+
+`id/code` 在创建后不因改名而变化。管理端修改 `name` 后，分类页、搜索、首页入口和商品关联通过稳定 ID 立即获得新名称；不允许以中文名做外键或缓存键。
 
 ### 4.3 商品 `products`
 
@@ -304,6 +309,7 @@
 | `variant_id` | BIGINT / string | 是 | 下单 SKU ID；无规格商品也有默认 SKU |
 | `product_code_snapshot` | VARCHAR(64) / string | 是 | 商品编码快照 |
 | `product_name_snapshot` | VARCHAR(160) / string | 是 | 名称快照 |
+| `product_subtitle_snapshot` | VARCHAR(200) / string | 否 | 副标题快照，供历史订单展示 |
 | `image_url_snapshot` | VARCHAR(512) / string | 否 | 主图快照 |
 | `spec_snapshot` | VARCHAR(160) / string | 否 | 当前 `spec` |
 | `unit_price_amount` | BIGINT / number | 是 | 下单单价，分 |
@@ -438,7 +444,7 @@
 | POST | `/api/admin/products/:productId/off-shelf` | 下架；购物车/结算实时变为不可用 |
 | POST | `/api/admin/variants/:variantId/inventory-adjustments` | 规格级库存调整并记录流水，不直接覆盖库存 |
 | GET/POST | `/api/admin/categories` | 分类/材质列表与新增，使用 `dimension` |
-| PATCH/DELETE | `/api/admin/categories/:categoryId` | 改名、启停、删除前引用检查 |
+| PATCH/DELETE | `/api/admin/categories/:categoryId` | 改名、启停、删除前引用检查；改名不变更 ID/code |
 | PUT | `/api/admin/categories/reorder` | 同一维度整体排序 |
 | GET/POST | `/api/admin/articles` | 文章管理列表/新建草稿 |
 | GET/PATCH/DELETE | `/api/admin/articles/:articleId` | 编辑、读取、软删除文章 |
@@ -809,7 +815,7 @@ Banner 写入只接受：
 
 参数：`dimension=PRODUCT_CATEGORY|MATERIAL|ALL`，默认 `ALL`。
 
-返回 `items[{id,code,dimension,name,iconText,parentId,sortOrder}]`。不返回“全部”；“全部”是前端清空筛选的 UI 选项。
+返回 `items[{id,code,dimension,name,iconText,parentId,sortOrder}]`。不返回“全部”；“全部”是前端清空筛选的 UI 选项。列表必须按 `sortOrder,id` 稳定排序；分类改名后保持原 `id/code`，客户端下次刷新即显示新名。
 
 ### 13.4 `GET /api/v1/products`
 
@@ -903,6 +909,8 @@ Banner 写入只接受：
 18. Banner 第一版只允许不跳转或跳转已有商品；不支持管理员输入任意页面路径，目标商品失效后按不跳转处理。
 19. 合集商品、商品图片、文章内容块均保留管理员设置的顺序；服务端写入使用事务性整体替换，读接口按 `sortOrder` 稳定返回。
 20. 正式业务写接口只引用已上传的 `mediaId`，不接收 `wxfile://`、临时文件路径或任意远程 URL；正文可包含多张图片。
+21. 分类、材质、文章、合集和商品详情都以服务端当前可见状态为准；客户端重新进入/下拉刷新后不得继续使用失效筛选条件或旧配置快照。
+22. 有待确认订单引用的商品不得物理删除；历史订单始终使用下单时的名称、副标题、主图、规格和价格快照展示。
 
 ## 16. 后端开工条件与上线验收门槛
 

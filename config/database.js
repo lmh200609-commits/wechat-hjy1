@@ -1,13 +1,30 @@
 const { Sequelize } = require("sequelize");
+const env = require("./env");
+const logger = require("../utils/logger");
 
-const { MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_ADDRESS = "" } = process.env;
-const [host, port] = MYSQL_ADDRESS.split(":");
-
-// 保留微信云托管通过环境变量注入 MySQL 连接信息的方式。
-const sequelize = new Sequelize("nodejs_demo", MYSQL_USERNAME, MYSQL_PASSWORD, {
-  host,
-  port,
+const sequelize = new Sequelize(env.database.name, env.database.username, env.database.password, {
+  host: env.database.host || "127.0.0.1",
+  port: env.database.port,
   dialect: "mysql",
+  timezone: "+00:00",
+  logging: env.database.logging
+    ? (sql, timing) => logger.debug("database_query", { sql, timing })
+    : false,
+  benchmark: env.database.logging,
+  pool: {
+    max: env.database.poolMax,
+    min: env.database.poolMin,
+    acquire: env.database.poolAcquireMs,
+    idle: env.database.poolIdleMs,
+  },
+  dialectOptions: {
+    supportBigNumbers: true,
+    bigNumberStrings: true,
+  },
+  define: {
+    underscored: true,
+    freezeTableName: true,
+  },
 });
 
 module.exports = sequelize;

@@ -1,17 +1,58 @@
+const AppError = require("../errors/app-error");
+const ERROR_CODES = require("../constants/error-codes");
+const logger = require("../utils/logger");
+
 function errorHandlerMiddleware(error, req, res, next) {
-  if (res.headersSent) {
-    return next(error);
+  if (res.headersSent) return next(error);
+
+  let normalizedError = error;
+  if (error && error.type === "entity.parse.failed") {
+    normalizedError = new AppError({
+      code: ERROR_CODES.BAD_REQUEST,
+      message: "Invalid JSON request body",
+      statusCode: 400,
+      cause: error,
+    });
+  } else if (error && error.type === "entity.too.large") {
+    normalizedError = new AppError({
+      code: ERROR_CODES.BAD_REQUEST,
+      message: "Request body is too large",
+      statusCode: 413,
+      cause: error,
+    });
   }
 
-  const statusCode = error.statusCode || 500;
-  const message = statusCode >= 500 ? "Internal server error" : error.message;
+  const knownError = normalizedError instanceof AppError;
+  const statusCode = knownError ? normalizedError.statusCode : 500;
+  const expose = knownError && normalizedError.expose;
+  const code = knownError ? normalizedError.code : ERROR_CODES.INTERNAL_ERROR;
 
-  console.error(error);
+  const logFields = {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl.split("?")[0],
+    statusCode,
+    code,
+  };
+
+  if (statusCode >= 500) {
+    logger.error("request_failed", { ...logFields, error: normalizedError });
+  } else {
+    logger.warn("request_rejected", {
+      ...logFields,
+      errorName: normalizedError.name,
+      errorMessage: normalizedError.message,
+    });
+  }
 
   return res.status(statusCode).json({
-    code: statusCode,
-    message,
+    success: false,
+    code,
+    message: expose ? normalizedError.message : "Internal server error",
     data: null,
+    details: expose ? normalizedError.details : undefined,
+    requestId: req.requestId,
+    timestamp: new Date().toISOString(),
   });
 }
 

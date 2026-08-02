@@ -1,158 +1,92 @@
-# 文玩商城微信小程序后端
+# 永乐文玩后端
 
-这是一个部署在微信云托管上的 Express + JavaScript 项目。目前完成第一阶段基础结构整理，尚未包含商品、分类、订单等具体商城业务，也不包含线上支付。
+微信云托管上的 Express + JavaScript + MySQL API，为“永乐文玩”原生微信小程序提供服务。
 
-## 技术与部署约束
+当前已完成阶段 0 工程基础，商城业务实体和接口将在后续迁移中实现。需求基线见 `docs/BACKEND-HANDOFF.md`。
 
-- JavaScript + Express
-- Node.js 22 或更高版本，使用 CommonJS
-- 微信云托管 + Docker
-- 监听微信云托管下发的 `PORT` 环境变量，本地默认使用 `80`
-- 使用 Sequelize 连接 MySQL
-- MySQL 连接信息继续由环境变量提供
+## 运行要求
 
-## 项目结构
+- Node.js 22 或更高版本
+- MySQL 8
+- CommonJS
+- 微信云托管通过 `PORT` 指定监听端口
 
-```text
-.
-├── app.js                         # Express 应用组装
-├── index.js                       # 服务启动入口
-├── config/
-│   └── database.js                # MySQL/Sequelize 配置
-├── controllers/
-│   ├── health.controller.js
-│   ├── legacy-counter.controller.js
-│   └── legacy-wechat.controller.js
-├── middleware/
-│   ├── async-handler.js
-│   ├── error-handler.js
-│   ├── not-found.js
-│   └── response.js
-├── models/
-│   └── legacy-counter.model.js
-├── routes/
-│   ├── health.routes.js
-│   └── legacy-example.routes.js
-├── services/
-│   └── legacy-counter.service.js
-├── db.js                          # 旧 db.js 导出的兼容入口
-├── index.html                     # 原计数器模板页面，暂时保留
-├── Dockerfile
-└── container.config.json
-```
+## 环境配置
 
-文件名中带有 `legacy` 的模块属于微信云托管计数器示例。它们与后续商城业务分开存放，但暂时保留原接口路径，方便兼容和回退。
+复制 `.env.example` 中的变量到本地运行环境。项目不会自动读取 `.env` 文件，避免额外运行时依赖；可由 IDE、PowerShell、容器或云托管注入变量。
 
-## 环境变量
-
-数据库连接沿用微信云托管模板的配置方式：
+生产环境至少必须配置：
 
 ```text
-MYSQL_ADDRESS=数据库地址:端口
-MYSQL_USERNAME=数据库用户名
-MYSQL_PASSWORD=数据库密码
+NODE_ENV=production
+MYSQL_ADDRESS=host:3306
+MYSQL_DATABASE=wenwan_mall
+MYSQL_USERNAME=username
+MYSQL_PASSWORD=password
+DATABASE_REQUIRED=true
+DB_CONNECT_ON_START=true
 ```
 
-数据库名称仍为 `nodejs_demo`。
+生产环境缺少数据库配置时会直接启动失败。本地开发默认允许不配置数据库，此时 `/health/live` 可用，而 `/health/ready` 返回 503。
 
-可通过 `PORT` 指定监听端口：
-
-```text
-PORT=3000
-```
-
-服务会先开始监听端口，再异步初始化旧计数器数据库。因此，即使本地没有配置 MySQL，`GET /health` 仍可使用；旧计数器接口会在数据库不可用时返回统一错误。
-
-## 本地运行
-
-安装依赖：
+## 常用命令
 
 ```bash
-npm install
-```
-
-PowerShell：
-
-```powershell
-$env:PORT = "3000"
 npm start
+npm run check
+npm test
+npm run db:status
+npm run db:migrate
+npm run db:seed
 ```
 
-macOS/Linux：
+数据库结构只能通过 `migrations/` 下的前向迁移调整。禁止在生产环境使用 `sequelize.sync({ alter: true })`。
 
-```bash
-PORT=3000 npm start
-```
+迁移默认不会随服务启动自动执行。部署流程应先执行 `npm run db:migrate`；若部署环境必须由容器启动时执行，可显式配置 `AUTO_MIGRATE=true`。迁移器使用 MySQL 命名锁，避免多实例同时执行。
 
-## 接口与响应格式
+种子数据必须显式执行。生产环境默认拒绝执行，只有明确设置 `ALLOW_DATABASE_SEED=true` 才可运行；前端模拟数据不会自动写入正式数据库。
 
-### 健康检查
-
-```http
-GET /health
-```
-
-成功响应示例：
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "status": "ok",
-    "timestamp": "2026-01-01T00:00:00.000Z"
-  }
-}
-```
-
-该接口不查询 MySQL。
-
-### 计数器模板兼容接口
+## 健康检查
 
 ```text
-GET  /api/count
-POST /api/count
-GET  /api/wx_openid
+GET /health       # 兼容入口，等同存活检查
+GET /health/live  # 进程存活，不访问数据库
+GET /health/ready # 服务就绪，检查数据库连接
 ```
 
-计数器接口仅为旧模板兼容代码，不代表商城业务设计。
+云托管健康检查应使用 `/health/live`。发布流量前和监控系统应额外检查 `/health/ready`。
 
-### 统一错误响应
+## 响应格式
+
+成功：
 
 ```json
 {
-  "code": 404,
-  "message": "Route not found: GET /missing",
-  "data": null
+  "success": true,
+  "code": "OK",
+  "message": "success",
+  "data": {},
+  "requestId": "a-request-id",
+  "timestamp": "2026-08-01T08:00:00.000Z"
 }
 ```
 
-服务端内部错误不会向客户端暴露堆栈信息。
+失败：
 
-## 验证
-
-启动后执行：
-
-```bash
-curl http://localhost:3000/health
-curl http://localhost:3000/missing
+```json
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "Route not found: GET /missing",
+  "data": null,
+  "details": null,
+  "requestId": "a-request-id",
+  "timestamp": "2026-08-01T08:00:00.000Z"
+}
 ```
 
-配置可用的 MySQL 环境变量后，可继续验证旧计数器接口：
+日志按单行 JSON 输出到 stdout/stderr。密码、Token、OpenID 和手机号等字段会自动脱敏。不得在业务日志中直接输出请求体或微信可信身份请求头。
 
-```bash
-curl http://localhost:3000/api/count
-curl -X POST -H "content-type: application/json" -d '{"action":"inc"}' http://localhost:3000/api/count
-```
+## 已移除的模板能力
 
-Docker 构建与运行：
-
-```bash
-docker build -t wechat-hjy1 .
-docker run --rm -p 3000:80 \
-  -e PORT=80 \
-  -e MYSQL_ADDRESS=host:3306 \
-  -e MYSQL_USERNAME=username \
-  -e MYSQL_PASSWORD=password \
-  wechat-hjy1
-```
+微信云托管示例计数器、示例网页和直接返回 OpenID 的接口已删除。普通用户身份将在用户阶段通过云托管可信请求头识别，前端不得提交 OpenID、userId 或 role 作为可信身份。
