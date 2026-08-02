@@ -49,10 +49,42 @@ test("production accepts complete database and WeChat routing configuration", ()
     WECHAT_CLOUD_ENV_ID: "prod-d9g4jzwa5832354ed",
     WECHAT_MINIPROGRAM_APP_ID: "wx14a6f266208130dd",
     WECHAT_CLOUD_SERVICE_NAME: "express-zaiy",
+    COS_BUCKET: "wenwan-test-1250000000",
+    COS_REGION: "ap-shanghai",
   });
   assert.equal(result.wechat.cloudEnvId, "prod-d9g4jzwa5832354ed");
   assert.equal(result.wechat.miniProgramAppId, "wx14a6f266208130dd");
-  assert.equal(result.mediaStorage.driver, "cloudbase");
+  assert.equal(result.mediaStorage.driver, "cos");
+  assert.equal(result.mediaStorage.cosBucket, "wenwan-test-1250000000");
+  assert.equal(result.mediaStorage.cosRegion, "ap-shanghai");
+});
+
+test("COS credentials support Cloud Hosting standard Tencent Cloud variable names", () => {
+  const result = parseEnv({
+    NODE_ENV: "development",
+    MEDIA_STORAGE_DRIVER: "cos",
+    COS_BUCKET: "wenwan-test-1250000000",
+    COS_REGION: "ap-shanghai",
+    TENCENTCLOUD_SECRETID: "temporary-id",
+    TENCENTCLOUD_SECRETKEY: "temporary-key",
+    TENCENTCLOUD_SESSIONTOKEN: "temporary-token",
+  });
+  assert.equal(result.mediaStorage.cosSecretId, "temporary-id");
+  assert.equal(result.mediaStorage.cosSecretKey, "temporary-key");
+  assert.equal(result.mediaStorage.cosSessionToken, "temporary-token");
+});
+
+test("COS driver requires bucket and region but resolves credentials lazily", () => {
+  assert.throws(
+    () => parseEnv({ MEDIA_STORAGE_DRIVER: "cos" }),
+    (error) => error instanceof ConfigError && error.message.includes("COS_BUCKET"),
+  );
+  const result = parseEnv({
+    MEDIA_STORAGE_DRIVER: "cos",
+    COS_BUCKET: "wenwan-test-1250000000",
+    COS_REGION: "ap-shanghai",
+  });
+  assert.equal(result.mediaStorage.cosSecretId, "");
 });
 
 test("invalid numeric and boolean values fail fast", () => {

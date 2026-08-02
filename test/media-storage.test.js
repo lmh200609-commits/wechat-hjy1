@@ -4,7 +4,7 @@ const express = require("express");
 
 process.env.NODE_ENV = "test";
 const { createMockStorage } = require("../storage/mock-storage");
-const { createCloudBaseStorage } = require("../storage/cloudbase-storage");
+const { createCosStorage, publicObjectUrl } = require("../storage/cos-storage");
 const { inspectImage } = require("../utils/image-metadata");
 const { decodeBase64Image, uploadImage } = require("../middleware/media-upload");
 
@@ -50,7 +50,7 @@ test("JSON media upload middleware exposes the decoded image to the route", asyn
   assert.deepEqual(await response.json(), { size: 24, name: "test.png" });
 });
 
-test("mock storage keeps local tests isolated from CloudBase", async () => {
+test("mock storage keeps local tests isolated from COS", async () => {
   const storage = createMockStorage();
   const uploaded = await storage.upload({ cloudPath: "wenwan/media/test.png", buffer: png() });
   assert.match(uploaded.fileID, /^cloud:\/\/mock-env\./);
@@ -59,38 +59,46 @@ test("mock storage keeps local tests isolated from CloudBase", async () => {
   assert.equal(storage.files.size, 0);
 });
 
-test("CloudBase adapter uses fileID upload and delete contracts", async () => {
+test("COS adapter uploads and deletes by bucket, region, and object key", async () => {
   const calls = [];
-  const storage = createCloudBaseStorage({
-    envId: "prod-test",
-    sdk: { init(input) { calls.push(["init", input]); return {
-      async uploadFile(input) { calls.push(["upload", input]); return { fileID: "cloud://prod-test.bucket/path.png" }; },
-      async deleteFile(input) { calls.push(["delete", input]); return { fileList: [{ code: "SUCCESS" }] }; },
-    }; } },
+  const client = {
+    putObject(input, callback) { calls.push(["upload", input]); callback(null, { ETag: "test" }); },
+    deleteObject(input, callback) { calls.push(["delete", input]); callback(null, {}); },
+  };
+  const storage = createCosStorage({
+    bucket: "wenwan-test-1250000000",
+    region: "ap-shanghai",
+    client,
   });
-  assert.deepEqual(calls, []);
-  const uploaded = await storage.upload({ cloudPath: "path.png", buffer: png() });
-  await storage.delete({ fileID: uploaded.fileID });
-  assert.deepEqual(calls[0], ["init", { env: "prod-test" }]);
-  assert.equal(calls[1][1].cloudPath, "path.png");
-  assert.deepEqual(calls[2][1], { fileList: ["cloud://prod-test.bucket/path.png"] });
+  const uploaded = await storage.upload({ cloudPath: "文玩/path 1.png", buffer: png(), mimeType: "image/png" });
+  await storage.delete({ cloudPath: uploaded.cloudPath });
+  assert.equal(uploaded.fileID, "https://wenwan-test-1250000000.cos.ap-shanghai.myqcloud.com/%E6%96%87%E7%8E%A9/path%201.png");
+  assert.equal(calls[0][1].Bucket, "wenwan-test-1250000000");
+  assert.equal(calls[0][1].Region, "ap-shanghai");
+  assert.equal(calls[0][1].Key, "文玩/path 1.png");
+  assert.equal(calls[0][1].ContentType, "image/png");
+  assert.deepEqual(calls[1], ["delete", {
+    Bucket: "wenwan-test-1250000000",
+    Region: "ap-shanghai",
+    Key: "文玩/path 1.png",
+  }]);
 });
 
-test("CloudBase adapter always initializes with the configured environment id", async () => {
-  const calls = [];
-  const storage = createCloudBaseStorage({
-    envId: "prod-test",
-    sdk: {
-      init(input) {
-        calls.push(input);
-        return {
-          async uploadFile() { return { fileID: "cloud://prod-test.bucket/path.png" }; },
-          async deleteFile() { return { fileList: [{ code: "SUCCESS" }] }; },
-        };
-      },
-    },
+test("COS adapter reports missing server credentials without exposing secret data", async () => {
+  const storage = createCosStorage({
+    bucket: "wenwan-test-1250000000",
+    region: "ap-shanghai",
   });
-  assert.deepEqual(calls, []);
-  await storage.upload({ cloudPath: "path.png", buffer: png() });
-  assert.deepEqual(calls, [{ env: "prod-test" }]);
+  await assert.rejects(
+    storage.upload({ cloudPath: "path.png", buffer: png(), mimeType: "image/png" }),
+    (error) => error.code === "COS_CREDENTIALS_MISSING" && error.expose === true,
+  );
+});
+
+test("COS public URL uses the configured bucket and region", () => {
+  assert.equal(publicObjectUrl({
+    bucket: "wenwan-test-1250000000",
+    region: "ap-shanghai",
+    cloudPath: "wenwan/media/a.png",
+  }), "https://wenwan-test-1250000000.cos.ap-shanghai.myqcloud.com/wenwan/media/a.png");
 });

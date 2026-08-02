@@ -1,13 +1,17 @@
 const env = require("../config/env");
-const { createCloudBaseStorage } = require("./cloudbase-storage");
+const { createCosStorage } = require("./cos-storage");
 const { createMockStorage } = require("./mock-storage");
 
 let singleton;
 
 function createStorage(config = env.mediaStorage) {
-  if (config.driver === "cloudbase") {
-    return createCloudBaseStorage({
-      envId: config.cloudEnvId,
+  if (config.driver === "cos") {
+    return createCosStorage({
+      bucket: config.cosBucket,
+      region: config.cosRegion,
+      secretId: config.cosSecretId,
+      secretKey: config.cosSecretKey,
+      sessionToken: config.cosSessionToken,
     });
   }
   return createMockStorage();

@@ -363,11 +363,11 @@
 |---|---|---:|---|
 | `id` | BIGINT / string | 是 | 媒体 ID，业务写接口只提交此 ID |
 | `object_key` | VARCHAR(512) / 不直接下发 | 是 | 旧数据兼容键；新数据与 `cloud_path` 相同 |
-| `file_id` | VARCHAR(512) / string | 新数据是 | CloudBase 永久文件标识；公共读接口以此作为媒体定位值，不保存临时 URL |
-| `cloud_path` | VARCHAR(512) / string | 新数据是 | CloudBase 对象路径，随机生成且唯一 |
-| `storage_provider` | ENUM / string | 是 | `CLOUDBASE`、`MOCK` 或旧数据 `LEGACY_EXTERNAL` |
+| `file_id` | VARCHAR(512) / string | 新数据是 | COS 公有读稳定 HTTPS 地址；公共读接口以此作为媒体定位值，不保存临时签名 URL |
+| `cloud_path` | VARCHAR(512) / string | 新数据是 | COS 对象 Key，随机生成且唯一 |
+| `storage_provider` | ENUM / string | 是 | 新上传使用 `COS`；兼容 `CLOUDBASE`、`MOCK` 和旧数据 `LEGACY_EXTERNAL` |
 | `original_filename` | VARCHAR(255) / string | 否 | 仅用于管理展示与审计，不参与对象路径 |
-| `url` | VARCHAR(1024) / string | 否 | 只兼容迁移前的外部媒体；CloudBase 新上传记录固定为空 |
+| `url` | VARCHAR(1024) / string | 否 | 只兼容迁移前的外部媒体；COS 新上传记录固定为空 |
 | `mime_type` | VARCHAR(80) / string | 是 | 第一版只允许 `image/jpeg`、`image/png`、`image/webp` |
 | `byte_size` | BIGINT / number | 是 | 文件大小，服务端实测 |
 | `width`、`height` | INT / number | 是 | 解码后的像素尺寸 |
@@ -378,7 +378,7 @@
 | `created_by_admin_id` | BIGINT / string | 是 | 上传管理员 |
 | `created_at`、`deleted_at` | DATETIME(3) / string | 是/否 | 审计时间 |
 
-媒体删除实时检查商品图库与详情正文、Banner、合集封面、文章封面和文章正文块引用；被引用时返回 `MEDIA_IN_USE`。无引用媒体先在事务内标记 `DELETING`，再删除 CloudBase 对象，成功后标记 `DELETED`；对象存储失败会恢复 `ACTIVE`，避免数据库与对象状态静默分叉。
+媒体删除实时检查商品图库与详情正文、Banner、合集封面、文章封面和文章正文块引用；被引用时返回 `MEDIA_IN_USE`。无引用媒体先在事务内标记 `DELETING`，再按 `COS_BUCKET + COS_REGION + cloud_path` 删除 COS 对象，成功后标记 `DELETED`；对象存储失败会恢复 `ACTIVE`，避免数据库与对象状态静默分叉。
 
 #### 首页设置 `home_settings`
 
@@ -589,7 +589,7 @@ Idempotency-Key: checkout-20260802-0001
 | GET | `/api/admin/dashboard` | **已实现**：用户、商品、SKU 库存、订单和内容聚合统计 |
 | GET | `/api/admin/media` | **已实现**：按引用状态分页读取媒体资产，不生成或持久化临时 URL |
 | POST | `/api/admin/media/images` | **已实现**：`media.write` 权限下上传 JPEG/PNG/WebP；支持 multipart 和小程序可发送的二进制请求体 |
-| DELETE | `/api/admin/media/:mediaId` | **已实现**：两阶段删除未引用 CloudBase 媒体；被引用返回 `MEDIA_IN_USE` |
+| DELETE | `/api/admin/media/:mediaId` | **已实现**：两阶段删除未引用 COS 媒体；被引用返回 `MEDIA_IN_USE` |
 | GET/POST | `/api/admin/products` | **已实现**：商品管理分页列表/事务性新建商品和完整 SKU、图库关系 |
 | GET/PATCH/DELETE | `/api/admin/products/:productId` | **已实现**：详情、带 `version` 乐观锁的事务性编辑、软删除及失效关系清理 |
 | POST | `/api/admin/products/:productId/on-sale` | **已实现**：上架并校验启用分类/材质、有效主图、启用 SKU 和售价 |
@@ -1135,8 +1135,8 @@ Banner 写入只接受：
 ### 16.1 当前工程与下一阶段前置条件
 
 - 后端源码位于独立目录 `D:\Projects\wechat-hjy1`，Node.js 22、Express 启动命令、云托管监听端口和 `express-zaiy` 路由配置均已落地；凭据只通过未提交的 `.env` 或云托管环境变量注入。
-- `wenwan_mall` 已连接并完成 6 个前向迁移，当前共 32 张业务表；时间按 UTC 写入并由数据库时钟处理过期规则。开发、测试、生产数据库仍须严格分离。
-- 选定对象存储/CDN。若暂未确定供应商，先定义 `MediaStorage` 接口，将上传、删除、生成 URL 与业务层解耦。
+- `wenwan_mall` 已连接并完成 9 个前向迁移，当前共 32 张业务表；时间按 UTC 写入并由数据库时钟处理过期规则。开发、测试、生产数据库仍须严格分离。
+- 媒体存储已选用微信云托管环境现有的腾讯云 COS；Express 通过 `MediaStorage` 适配器统一上传和删除，数据库保存稳定 HTTPS 地址、对象 Key、类型、大小与引用状态。
 - 管理员认证已使用高熵随机不透明 Token：数据库仅保存 Token 哈希、过期和撤销时间；客户端通过 `Authorization: Bearer` 携带，不使用可长期有效且难撤销的自包含 JWT。
 - 创建 `.env.example` 只列变量名，例如数据库、云环境、媒体存储和会话密钥；任何真实密钥、AppSecret、OpenID、数据库密码不得写入代码或文档。
 

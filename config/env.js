@@ -105,14 +105,30 @@ function parseEnv(source = process.env) {
     lockSeconds: readInteger(source, "ADMIN_LOCK_SECONDS", 1800, { min: 60, max: 86400 }),
   };
   const mediaStorage = {
-    driver: readString(source, "MEDIA_STORAGE_DRIVER", isProduction ? "cloudbase" : "mock").toLowerCase(),
-    cloudEnvId: readString(source, "CLOUDBASE_STORAGE_ENV_ID", wechat.cloudEnvId),
+    driver: readString(source, "MEDIA_STORAGE_DRIVER", isProduction ? "cos" : "mock").toLowerCase(),
+    cosBucket: readString(source, "COS_BUCKET"),
+    cosRegion: readString(source, "COS_REGION"),
+    cosSecretId: readString(
+      source,
+      "COS_SECRET_ID",
+      readString(source, "TENCENTCLOUD_SECRETID"),
+    ),
+    cosSecretKey: readString(
+      source,
+      "COS_SECRET_KEY",
+      readString(source, "TENCENTCLOUD_SECRETKEY"),
+    ),
+    cosSessionToken: readString(
+      source,
+      "COS_SESSION_TOKEN",
+      readString(source, "TENCENTCLOUD_SESSIONTOKEN"),
+    ),
     cloudPathPrefix: readString(source, "MEDIA_CLOUD_PATH_PREFIX", "wenwan/media").replace(/^\/+|\/+$/g, ""),
     maxBytes: readInteger(source, "MEDIA_MAX_BYTES", 8388608, { min: 1024, max: 20971520 }),
     maxPixels: readInteger(source, "MEDIA_MAX_PIXELS", 25000000, { min: 10000, max: 100000000 }),
   };
-  if (!["mock", "cloudbase"].includes(mediaStorage.driver)) {
-    throw new ConfigError("MEDIA_STORAGE_DRIVER must be mock or cloudbase");
+  if (!["mock", "cos"].includes(mediaStorage.driver)) {
+    throw new ConfigError("MEDIA_STORAGE_DRIVER must be mock or cos");
   }
   if (databaseRequired) {
     const missing = [];
@@ -134,8 +150,13 @@ function parseEnv(source = process.env) {
       throw new ConfigError(`Missing required WeChat configuration: ${missingWechat.join(", ")}`);
     }
   }
-  if (mediaStorage.driver === "cloudbase" && !mediaStorage.cloudEnvId) {
-    throw new ConfigError("CLOUDBASE_STORAGE_ENV_ID or WECHAT_CLOUD_ENV_ID is required for CloudBase media storage");
+  if (mediaStorage.driver === "cos") {
+    const missingCos = [];
+    if (!mediaStorage.cosBucket) missingCos.push("COS_BUCKET");
+    if (!mediaStorage.cosRegion) missingCos.push("COS_REGION");
+    if (missingCos.length) {
+      throw new ConfigError(`Missing required COS storage configuration: ${missingCos.join(", ")}`);
+    }
   }
 
   return Object.freeze({

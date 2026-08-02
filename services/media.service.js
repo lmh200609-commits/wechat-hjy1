@@ -67,9 +67,16 @@ function createMediaService({
       logger.error("media.storage.upload_failed", {
         provider: storage.provider,
         code: error?.code || error?.name || "UNKNOWN",
+        message: error?.expose ? error.message : "COS request failed",
+        statusCode: error?.statusCode || null,
         requestId: error?.requestId || null,
       });
-      fail(ERROR_CODES.MEDIA_STORAGE_FAILED, "Media storage upload failed", 503);
+      fail(
+        ERROR_CODES.MEDIA_STORAGE_FAILED,
+        error?.expose ? error.message : "Media storage upload failed",
+        503,
+        error?.expose ? { reason: error.code } : undefined,
+      );
     }
     try {
       const row = await transaction(async (repo) => {
@@ -95,7 +102,7 @@ function createMediaService({
       });
       return dto(row);
     } catch (error) {
-      await storage.delete({ fileID: uploaded.fileID }).catch(() => {});
+      await storage.delete({ fileID: uploaded.fileID, cloudPath: uploaded.cloudPath }).catch(() => {});
       throw error;
     }
   }
@@ -110,7 +117,7 @@ function createMediaService({
       const row = await repo.findById(mediaId, true);
       if (!row || row.status === "DELETED") fail(ERROR_CODES.MEDIA_NOT_FOUND, "Media not found", 404);
       if (row.storage_provider === "LEGACY_EXTERNAL" || !row.file_id) {
-        fail(ERROR_CODES.CONFLICT, "Legacy external media cannot be deleted through CloudBase storage", 409);
+        fail(ERROR_CODES.CONFLICT, "Legacy external media cannot be deleted through managed object storage", 409);
       }
       const count = await repo.computeReferenceCount(mediaId);
       await repo.updateReferenceState(mediaId, count);
@@ -119,11 +126,13 @@ function createMediaService({
       return row;
     });
     try {
-      await storage.delete({ fileID: marked.file_id });
+      await storage.delete({ fileID: marked.file_id, cloudPath: marked.cloud_path || marked.object_key });
     } catch (error) {
       logger.error("media.storage.delete_failed", {
         provider: storage.provider,
         code: error?.code || error?.name || "UNKNOWN",
+        message: error?.expose ? error.message : "COS request failed",
+        statusCode: error?.statusCode || null,
         requestId: error?.requestId || null,
       });
       await transaction((repo) => repo.setStatus(mediaId, "ACTIVE"));
