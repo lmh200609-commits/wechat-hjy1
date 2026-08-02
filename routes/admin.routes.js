@@ -7,6 +7,11 @@ const catalogController = require("../controllers/admin-catalog.controller");
 const catalogValidators = require("../validators/admin-catalog.validators");
 const orderController = require("../controllers/admin-order.controller");
 const orderValidators = require("../validators/admin-order.validators");
+const contentController = require("../controllers/admin-content.controller");
+const contentValidators = require("../validators/admin-content.validators");
+const mediaController = require("../controllers/media.controller");
+const mediaValidators = require("../validators/media.validators");
+const { uploadImage } = require("../middleware/media-upload");
 const { createWechatGatewayMiddleware } = require("../middleware/wechat-user");
 const { createAdminAuthMiddleware, requireAdminPermission } = require("../middleware/admin-auth");
 
@@ -38,6 +43,34 @@ router.post("/products/:productId/off-shelf", requireAdminPermission("products.w
 
 router.get("/variants/:variantId/inventory-movements", requireAdminPermission("inventory.read"), validate(catalogValidators.inventoryMovements), asyncHandler(catalogController.inventoryMovements));
 router.post("/variants/:variantId/inventory-adjustments", requireAdminPermission("inventory.adjust"), validate(catalogValidators.inventoryAdjustment), asyncHandler(catalogController.adjustInventory));
+
+router.get("/media", requireAdminPermission("media.write"), validate(mediaValidators.list), asyncHandler(mediaController.list));
+router.post("/media/images", requireAdminPermission("media.write"), uploadImage, asyncHandler(mediaController.upload));
+router.delete("/media/:mediaId", requireAdminPermission("media.write"), validate(mediaValidators.id), asyncHandler(mediaController.remove));
+
+router.get("/articles", requireAdminPermission("articles.read"), validate(contentValidators.articleList), asyncHandler(contentController.listArticles));
+router.post("/articles", requireAdminPermission("articles.write"), validate(contentValidators.articleCreate), asyncHandler(contentController.createArticle));
+router.get("/articles/:articleId", requireAdminPermission("articles.read"), validate(contentValidators.articleId), asyncHandler(contentController.getArticle));
+router.patch("/articles/:articleId", requireAdminPermission("articles.write"), validate(contentValidators.articleUpdate), asyncHandler(contentController.updateArticle));
+router.delete("/articles/:articleId", requireAdminPermission("articles.write"), validate(contentValidators.articleId), asyncHandler(contentController.deleteArticle));
+
+router.get("/collections", requireAdminPermission("collections.read"), validate(contentValidators.collectionList), asyncHandler(contentController.listCollections));
+router.post("/collections", requireAdminPermission("collections.write"), validate(contentValidators.collectionCreate), asyncHandler(contentController.createCollection));
+router.get("/collections/:collectionId", requireAdminPermission("collections.read"), validate(contentValidators.collectionId), asyncHandler(contentController.getCollection));
+router.patch("/collections/:collectionId", requireAdminPermission("collections.write"), validate(contentValidators.collectionUpdate), asyncHandler(contentController.updateCollection));
+router.delete("/collections/:collectionId", requireAdminPermission("collections.write"), validate(contentValidators.collectionId), asyncHandler(contentController.deleteCollection));
+
+router.get("/banners", requireAdminPermission("homepage.read"), validate(contentValidators.bannerList), asyncHandler(contentController.listBanners));
+router.post("/banners", requireAdminPermission("homepage.write"), validate(contentValidators.bannerCreate), asyncHandler(contentController.createBanner));
+router.put("/banners/reorder", requireAdminPermission("homepage.write"), validate(contentValidators.bannerReorder), asyncHandler(contentController.reorderBanners));
+router.get("/banners/:bannerId", requireAdminPermission("homepage.read"), validate(contentValidators.bannerId), asyncHandler(contentController.getBanner));
+router.patch("/banners/:bannerId", requireAdminPermission("homepage.write"), validate(contentValidators.bannerUpdate), asyncHandler(contentController.updateBanner));
+router.delete("/banners/:bannerId", requireAdminPermission("homepage.write"), validate(contentValidators.bannerId), asyncHandler(contentController.deleteBanner));
+
+router.get("/homepage", requireAdminPermission("homepage.read"), asyncHandler(contentController.getHome));
+router.patch("/homepage", requireAdminPermission("homepage.write"), validate(contentValidators.homeSettings), asyncHandler(contentController.updateHome));
+router.put("/homepage/quick-categories", requireAdminPermission("homepage.write"), validate(contentValidators.quickCategories), asyncHandler(contentController.setQuickCategories));
+router.put("/homepage/featured-products", requireAdminPermission("homepage.write"), validate(contentValidators.featuredProducts), asyncHandler(contentController.setFeaturedProducts));
 
 router.get("/orders", requireAdminPermission("orders.read"), validate(orderValidators.list), asyncHandler(orderController.orders));
 router.get("/orders/:orderId", requireAdminPermission("orders.read"), validate(orderValidators.orderParam), asyncHandler(orderController.order));

@@ -104,6 +104,16 @@ function parseEnv(source = process.env) {
     accountMaxAttempts: readInteger(source, "ADMIN_ACCOUNT_MAX_ATTEMPTS", 5, { min: 3, max: 20 }),
     lockSeconds: readInteger(source, "ADMIN_LOCK_SECONDS", 1800, { min: 60, max: 86400 }),
   };
+  const mediaStorage = {
+    driver: readString(source, "MEDIA_STORAGE_DRIVER", isProduction ? "cloudbase" : "mock").toLowerCase(),
+    cloudEnvId: readString(source, "CLOUDBASE_STORAGE_ENV_ID", wechat.cloudEnvId),
+    cloudPathPrefix: readString(source, "MEDIA_CLOUD_PATH_PREFIX", "wenwan/media").replace(/^\/+|\/+$/g, ""),
+    maxBytes: readInteger(source, "MEDIA_MAX_BYTES", 8388608, { min: 1024, max: 20971520 }),
+    maxPixels: readInteger(source, "MEDIA_MAX_PIXELS", 25000000, { min: 10000, max: 100000000 }),
+  };
+  if (!["mock", "cloudbase"].includes(mediaStorage.driver)) {
+    throw new ConfigError("MEDIA_STORAGE_DRIVER must be mock or cloudbase");
+  }
   if (databaseRequired) {
     const missing = [];
     if (!database.host) missing.push("MYSQL_ADDRESS or MYSQL_HOST");
@@ -124,6 +134,9 @@ function parseEnv(source = process.env) {
       throw new ConfigError(`Missing required WeChat configuration: ${missingWechat.join(", ")}`);
     }
   }
+  if (mediaStorage.driver === "cloudbase" && !mediaStorage.cloudEnvId) {
+    throw new ConfigError("CLOUDBASE_STORAGE_ENV_ID or WECHAT_CLOUD_ENV_ID is required for CloudBase media storage");
+  }
 
   return Object.freeze({
     nodeEnv,
@@ -143,6 +156,7 @@ function parseEnv(source = process.env) {
       .map((item) => item.trim())
       .filter(Boolean),
     wechat: Object.freeze(wechat),
+    mediaStorage: Object.freeze(mediaStorage),
     adminAuth: Object.freeze(adminAuth),
     database: Object.freeze(database),
   });

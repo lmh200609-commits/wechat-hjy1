@@ -27,10 +27,17 @@ async function main() {
   try {
     await database.connect();
     const rows = await database.sequelize.query(
-      "SELECT COUNT(*) AS total FROM admin_users WHERE deleted_at IS NULL",
+      "SELECT CAST(id AS CHAR) AS id FROM admin_users WHERE deleted_at IS NULL ORDER BY id ASC LIMIT 1",
       { type: QueryTypes.SELECT },
     );
-    if (Number(rows[0].total) > 0) {
+    if (rows[0]) {
+      await database.sequelize.query(`
+        INSERT INTO home_settings (
+          id, featured_title, show_featured, show_collections, show_journal,
+          version, updated_by_admin_id, updated_at
+        ) VALUES (1, '精选雅物', 1, 1, 1, 1, :adminId, CURRENT_TIMESTAMP(3))
+        ON DUPLICATE KEY UPDATE id = id
+      `, { replacements: { adminId: rows[0].id } });
       logger.info("admin_bootstrap_skipped", { reason: "administrator_already_exists" });
       return;
     }
@@ -58,6 +65,13 @@ async function main() {
         "SELECT CAST(LAST_INSERT_ID() AS CHAR) AS id",
         { type: QueryTypes.SELECT, transaction },
       );
+      await database.sequelize.query(`
+        INSERT INTO home_settings (
+          id, featured_title, show_featured, show_collections, show_journal,
+          version, updated_by_admin_id, updated_at
+        ) VALUES (1, '精选雅物', 1, 1, 1, 1, :adminId, CURRENT_TIMESTAMP(3))
+        ON DUPLICATE KEY UPDATE id = id
+      `, { replacements: { adminId: ids[0].id }, transaction });
       await database.sequelize.query(`
         INSERT INTO admin_operation_logs (
           admin_user_id, module, action, target_type, target_id, target_label, created_at

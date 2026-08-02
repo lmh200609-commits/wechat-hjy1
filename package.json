@@ -15,6 +15,7 @@
     "api:verify-admin-auth": "node scripts/verify-admin-auth.js",
     "api:verify-admin-catalog": "node scripts/verify-admin-catalog.js",
     "api:verify-admin-orders": "node scripts/verify-admin-orders.js",
+    "api:verify-admin-content": "node scripts/verify-admin-content.js",
     "orders:expire": "node scripts/expire-orders.js",
     "admin:bootstrap": "node scripts/bootstrap-admin.js",
     "admin:security:cleanup": "node scripts/cleanup-admin-security.js",
@@ -25,13 +26,16 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
+    "@cloudbase/node-sdk": "^4.0.3",
     "cors": "^2.8.5",
     "express": "^4.16.4",
     "morgan": "^1.10.0",
+    "multer": "^2.2.0",
     "mysql2": "^3.23.2",
     "sequelize": "^6.37.8"
   },
   "overrides": {
+    "axios": "1.19.0",
     "sequelize": {
       "uuid": "11.1.1"
     }

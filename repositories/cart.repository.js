@@ -31,7 +31,7 @@ function createCartRepository({ sequelize = database.sequelize, transaction } = 
         CAST(v.original_price_amount AS CHAR) AS original_price_amount,
         CAST(GREATEST(CAST(v.on_hand_quantity AS SIGNED) - CAST(v.reserved_quantity AS SIGNED), 0) AS CHAR) AS available_quantity,
         v.enabled AS variant_enabled,
-        media.url AS primary_image_url,
+        COALESCE(media.file_id, media.url) AS primary_image_url,
         ci.created_at,
         ci.updated_at
       FROM cart_items ci

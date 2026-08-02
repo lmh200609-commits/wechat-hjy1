@@ -24,7 +24,7 @@ function createOrderRepository({ sequelize = database.sequelize, transaction } =
     CAST(v.on_hand_quantity AS CHAR) AS on_hand_quantity,
     CAST(v.reserved_quantity AS CHAR) AS reserved_quantity,
     CAST(v.version AS CHAR) AS variant_version, v.enabled AS variant_enabled,
-    media.url AS primary_image_url
+    COALESCE(media.file_id, media.url) AS primary_image_url
   `;
 
   const CANDIDATE_JOINS = `

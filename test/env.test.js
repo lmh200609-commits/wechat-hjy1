@@ -16,6 +16,7 @@ test("development can start without database credentials", () => {
   assert.equal(result.port, 3000);
   assert.equal(result.adminAuth.sessionTtlSeconds, 7200);
   assert.equal(result.adminAuth.accountMaxAttempts, 5);
+  assert.equal(result.mediaStorage.driver, "mock");
 });
 
 test("production requires database credentials", () => {
@@ -51,6 +52,7 @@ test("production accepts complete database and WeChat routing configuration", ()
   });
   assert.equal(result.wechat.cloudEnvId, "prod-d9g4jzwa5832354ed");
   assert.equal(result.wechat.miniProgramAppId, "wx14a6f266208130dd");
+  assert.equal(result.mediaStorage.driver, "cloudbase");
 });
 
 test("invalid numeric and boolean values fail fast", () => {

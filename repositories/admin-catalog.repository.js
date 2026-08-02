@@ -1,6 +1,7 @@
 const { QueryTypes } = require("sequelize");
 const database = require("../database");
 const createAdminRepository = require("./admin.repository");
+const createMediaRepository = require("./media.repository");
 
 function json(value) {
   return value == null ? null : JSON.stringify(value);
@@ -11,6 +12,7 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
     return { replacements, ...(type ? { type } : {}), ...(transaction ? { transaction } : {}) };
   }
   const auditRepository = createAdminRepository({ sequelize, transaction });
+  const mediaRepository = createMediaRepository({ sequelize, transaction });
 
   async function findCategories({ dimension, enabled }) {
     const dimensionFilter = dimension === "ALL" ? "" : " AND c.dimension = :dimension";
@@ -129,7 +131,7 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
                   WHERE v.product_id = p.id AND v.enabled = 1), 0) AS CHAR) AS reserved_quantity,
     CAST(COALESCE((SELECT SUM(v.on_hand_quantity - v.reserved_quantity) FROM product_variants v
                   WHERE v.product_id = p.id AND v.enabled = 1), 0) AS CHAR) AS available_quantity,
-    media.url AS primary_image_url
+    COALESCE(media.file_id, media.url) AS primary_image_url
   `;
 
   const PRODUCT_ADMIN_FROM = `
@@ -199,7 +201,7 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
     return sequelize.query(`
       SELECT CAST(pi.id AS CHAR) AS id, CAST(pi.media_id AS CHAR) AS media_id,
              pi.kind, pi.alt_text, CAST(pi.sort_order AS CHAR) AS sort_order,
-             media.url, media.status AS media_status
+             COALESCE(media.file_id, media.url) AS url, media.status AS media_status
       FROM product_images pi INNER JOIN media_assets media ON media.id = pi.media_id
       WHERE pi.product_id = :productId ORDER BY pi.sort_order ASC, pi.id ASC
     `, options({ productId }, QueryTypes.SELECT));
@@ -220,11 +222,11 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
     `, options({ productId }, QueryTypes.SELECT));
   }
 
-  async function findActiveMedia(mediaIds) {
+  async function findActiveMedia(mediaIds, lock = false) {
     if (!mediaIds.length) return [];
     return sequelize.query(`
-      SELECT CAST(id AS CHAR) AS id, url, status FROM media_assets
-      WHERE id IN (:mediaIds) AND status = 'ACTIVE'
+      SELECT CAST(id AS CHAR) AS id, COALESCE(file_id, url) AS url, status FROM media_assets
+      WHERE id IN (:mediaIds) AND status = 'ACTIVE' ${lock ? "FOR UPDATE" : ""}
     `, options({ mediaIds }, QueryTypes.SELECT));
   }
 
@@ -426,6 +428,7 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
 
   return {
     writeLog: auditRepository.writeLog,
+    refreshReferenceState: mediaRepository.refreshReferenceState,
     findCategories,
     findCategory,
     findCategoryByCodeOrName,

@@ -1,10 +1,10 @@
 # 后端交接与 API 契约
 
-> 版本：1.9（管理首页与订单实施基线，2026-08-02）
+> 版本：2.0（CloudBase 媒体与内容管理实施基线，2026-08-02）
 > 事实基线：当前 `miniprogram` 原生微信小程序代码、`data/*`、`utils/shop-store.js`、`utils/admin-store.js`、`app.json` 与现有分析文档。  
-> 本文只定义后端边界和建议契约，不代表模拟数据已成为正式数据库数据，也不包含后端实现代码。
+> 本文记录当前后端边界、已实现契约和后续接入约束；模拟数据仍不代表正式数据库数据。
 
-> 当前实施状态：阶段 0 工程基础、阶段 1 核心数据库结构、阶段 2 公共浏览 API、阶段 3 普通用户可信身份、阶段 4 购物车与收货地址、阶段 5 普通用户收藏/结算/订单、阶段 6.1 管理员认证与 RBAC、阶段 6.2 分类/材质、商品/SKU 生命周期和库存流水管理，以及阶段 6.3 管理首页统计和管理订单闭环已在 `D:\Projects\wechat-hjy1` 完成。以上接口均已通过真实 MySQL 契约验证。首位真实超级管理员已由项目负责人通过受控命令初始化，文档和代码不记录其账号或密码。小程序前端仍读取本地模拟层，尚未切换到这些 API；正式数据库也尚未导入前端模拟商品和内容。
+> 当前实施状态：阶段 0 工程基础至阶段 6.3 管理订单闭环，以及阶段 6.4 CloudBase 媒体、文玩志文章、合集、Banner 和首页配置均已在 `D:\Projects\wechat-hjy1` 完成。数据库迁移、公共/用户/交易/订单/管理员旧链路和本阶段 mock 存储集成测试均已通过。小程序前端仍读取本地模拟层，尚未切换到这些 API；正式数据库也尚未导入前端模拟商品和内容。
 
 ## 0. 已确认架构与安全边界
 
@@ -193,11 +193,12 @@
 | `id` | BIGINT / string | 是 | Banner ID |
 | `title`、`subtitle` | VARCHAR(80/120) / string | 是/否 | 标题与副标题 |
 | `image_media_id` | BIGINT / string | 是 | 关联 `media_assets.id` |
-| `image_url` | API string | 是 | API 派生图片 URL |
+| `image_url` | API string | 是 | API 从 `file_id` 派生的媒体定位值；不落库临时访问 URL |
 | `link_type` | ENUM / string | 是 | 第一版只允许 `NONE`、`PRODUCT` |
 | `target_product_id` | BIGINT / string | 否 | 管理员从已有商品选择；`NONE` 时为空，商品删除时自动清空 |
 | `visible` | TINYINT(1) / boolean | 是 | 是否显示 |
 | `sort_order` | INT / number | 是 | 轮播顺序 |
+| `version` | INT / number | 是 | 编辑乐观锁版本 |
 | `starts_at`、`ends_at` | DATETIME(3) / string | 否 | 定时投放预留 |
 | `created_at`、`updated_at` | DATETIME(3) / string | 是 | 审计时间 |
 
@@ -214,6 +215,7 @@
 | `cover_image_url` | API string | 是 | API 派生，映射当前 `cover` |
 | `visible` | TINYINT(1) / boolean | 是 | 是否显示 |
 | `sort_order` | INT / number | 是 | 合集顺序 |
+| `version` | INT / number | 是 | 编辑乐观锁版本 |
 | `created_at`、`updated_at` | DATETIME(3) / string | 是 | 审计时间 |
 | `collection_products.collection_id` | BIGINT / string | 是 | 合集 ID |
 | `collection_products.product_id` | BIGINT / string | 是 | 商品 ID，联合唯一 |
@@ -229,12 +231,13 @@
 | `tag` | VARCHAR(40) / string | 是 | 第一版单标签，取值由后端内容配置维护，不建立文章与标签多对多关系 |
 | `summary` | VARCHAR(500) / string | 是 | 摘要 |
 | `author_name` | VARCHAR(80) / string | 是 | 作者显示名 |
-| `cover_media_id` | BIGINT / string | 是 | 文章封面媒体，关联 `media_assets.id` |
-| `cover_image_url` | API string | 是 | API 派生封面 URL |
+| `cover_media_id` | BIGINT / string | 发布时是 | 草稿可为空；发布时必须关联有效 `media_assets.id` |
+| `cover_image_url` | API string | 发布时是 | API 从 `file_id` 派生的媒体定位值 |
 | `body_json` | JSON / object[] | 是 | 有序结构化正文块：`id/type(HEADING/PARAGRAPH/IMAGE)/text?/mediaId?/caption?`；图片块响应时补充 `imageUrl`，禁止任意 HTML |
 | `reading_minutes` | SMALLINT / number | 是 | 预计阅读分钟 |
 | `status` | ENUM / string | 是 | `DRAFT`、`PUBLISHED`、`ARCHIVED` |
 | `is_hot` | TINYINT(1) / boolean | 是 | 首页推荐标记 |
+| `version` | INT / number | 是 | 编辑乐观锁版本 |
 | `published_at` | DATETIME(3) / string | 否 | 正式发布时间 |
 | `created_at`、`updated_at` | DATETIME(3) / string | 是 | 审计时间 |
 
@@ -359,17 +362,23 @@
 | 字段 | MySQL / API 类型 | 必填 | 说明 |
 |---|---|---:|---|
 | `id` | BIGINT / string | 是 | 媒体 ID，业务写接口只提交此 ID |
-| `object_key` | VARCHAR(512) / 不直接下发 | 是 | 对象存储唯一 key |
-| `url` | VARCHAR(1024) / string | 是 | CDN/对象存储正式访问地址 |
+| `object_key` | VARCHAR(512) / 不直接下发 | 是 | 旧数据兼容键；新数据与 `cloud_path` 相同 |
+| `file_id` | VARCHAR(512) / string | 新数据是 | CloudBase 永久文件标识；公共读接口以此作为媒体定位值，不保存临时 URL |
+| `cloud_path` | VARCHAR(512) / string | 新数据是 | CloudBase 对象路径，随机生成且唯一 |
+| `storage_provider` | ENUM / string | 是 | `CLOUDBASE`、`MOCK` 或旧数据 `LEGACY_EXTERNAL` |
+| `original_filename` | VARCHAR(255) / string | 否 | 仅用于管理展示与审计，不参与对象路径 |
+| `url` | VARCHAR(1024) / string | 否 | 只兼容迁移前的外部媒体；CloudBase 新上传记录固定为空 |
 | `mime_type` | VARCHAR(80) / string | 是 | 第一版只允许 `image/jpeg`、`image/png`、`image/webp` |
 | `byte_size` | BIGINT / number | 是 | 文件大小，服务端实测 |
 | `width`、`height` | INT / number | 是 | 解码后的像素尺寸 |
 | `sha256` | CHAR(64) / 不下发 | 是 | 内容摘要，用于去重和审计 |
-| `status` | ENUM / string | 是 | `ACTIVE`、`QUARANTINED`、`DELETED` |
+| `reference_count` | INT / number | 是 | 商品图库/详情、文章封面/正文、Banner 和合集的实时引用计数 |
+| `reference_status` | ENUM / string | 是 | `UNREFERENCED` 或 `REFERENCED`，便于管理端筛选 |
+| `status` | ENUM / string | 是 | `ACTIVE`、`QUARANTINED`、`DELETING`、`DELETED` |
 | `created_by_admin_id` | BIGINT / string | 是 | 上传管理员 |
 | `created_at`、`deleted_at` | DATETIME(3) / string | 是/否 | 审计时间 |
 
-媒体删除必须先检查商品图片、Banner、合集封面、文章封面和文章正文块引用；被引用时返回 `MEDIA_IN_USE`。业务记录删除后建议异步回收无引用媒体，不在同一请求中直接物理删除对象。
+媒体删除实时检查商品图库与详情正文、Banner、合集封面、文章封面和文章正文块引用；被引用时返回 `MEDIA_IN_USE`。无引用媒体先在事务内标记 `DELETING`，再删除 CloudBase 对象，成功后标记 `DELETED`；对象存储失败会恢复 `ACTIVE`，避免数据库与对象状态静默分叉。
 
 #### 首页设置 `home_settings`
 
@@ -578,8 +587,9 @@ Idempotency-Key: checkout-20260802-0001
 | POST | `/api/admin/auth/logout` | **已实现**：撤销当前管理会话 |
 | GET | `/api/admin/me` | **已实现**：当前管理员、角色和服务端权限码 |
 | GET | `/api/admin/dashboard` | **已实现**：用户、商品、SKU 库存、订单和内容聚合统计 |
-| POST | `/api/admin/media/images` | 上传单张图片并返回 `mediaId/url/width/height/byteSize` |
-| DELETE | `/api/admin/media/:mediaId` | 删除未被引用的媒体；被引用返回 `MEDIA_IN_USE` |
+| GET | `/api/admin/media` | **已实现**：按引用状态分页读取媒体资产，不生成或持久化临时 URL |
+| POST | `/api/admin/media/images` | **已实现**：`media.write` 权限下上传 JPEG/PNG/WebP；支持 multipart 和小程序可发送的二进制请求体 |
+| DELETE | `/api/admin/media/:mediaId` | **已实现**：两阶段删除未引用 CloudBase 媒体；被引用返回 `MEDIA_IN_USE` |
 | GET/POST | `/api/admin/products` | **已实现**：商品管理分页列表/事务性新建商品和完整 SKU、图库关系 |
 | GET/PATCH/DELETE | `/api/admin/products/:productId` | **已实现**：详情、带 `version` 乐观锁的事务性编辑、软删除及失效关系清理 |
 | POST | `/api/admin/products/:productId/on-sale` | **已实现**：上架并校验启用分类/材质、有效主图、启用 SKU 和售价 |
@@ -589,18 +599,16 @@ Idempotency-Key: checkout-20260802-0001
 | GET/POST | `/api/admin/categories` | **已实现**：分类/材质列表与新增，使用稳定 `dimension/id/code` |
 | PATCH/DELETE | `/api/admin/categories/:categoryId` | **已实现**：改名、启停、引用保护删除；改名不变更 ID/code |
 | PUT | `/api/admin/categories/reorder` | **已实现**：同一维度完整 ID 集合的事务性整体排序 |
-| GET/POST | `/api/admin/articles` | 文章管理列表/新建草稿 |
-| GET/PATCH/DELETE | `/api/admin/articles/:articleId` | 编辑、读取、软删除文章 |
-| POST | `/api/admin/articles/:articleId/publish` | 发布并执行完整内容校验 |
-| POST | `/api/admin/articles/:articleId/unpublish` | 撤回为草稿/归档 |
-| GET/POST | `/api/admin/collections` | 合集列表/新建 |
-| GET/PATCH/DELETE | `/api/admin/collections/:collectionId` | 编辑有序商品关系、显隐、软删除 |
-| GET/PATCH | `/api/admin/homepage` | 首页模块开关和精选标题 |
-| PUT | `/api/admin/homepage/quick-categories` | 原子替换 5 个快捷分类及顺序 |
-| PUT | `/api/admin/homepage/featured-products` | 原子替换 1–8 个精选商品及顺序 |
-| GET/POST | `/api/admin/banners` | Banner 列表/新建 |
-| PATCH/DELETE | `/api/admin/banners/:bannerId` | 编辑、显隐和删除 |
-| PUT | `/api/admin/banners/reorder` | 原子保存 Banner 顺序 |
+| GET/POST | `/api/admin/articles` | **已实现**：文章分页/新建；草稿可不完整，发布态执行完整内容校验 |
+| GET/PATCH/DELETE | `/api/admin/articles/:articleId` | **已实现**：带 `version` 编辑、通过 `status` 发布/归档、软删除及多图正文引用维护 |
+| GET/POST | `/api/admin/collections` | **已实现**：合集分页/新建和封面引用维护 |
+| GET/PATCH/DELETE | `/api/admin/collections/:collectionId` | **已实现**：带 `version` 编辑有序商品关系、显隐和软删除 |
+| GET/PATCH | `/api/admin/homepage` | **已实现**：首页模块开关、精选标题和乐观版本 |
+| PUT | `/api/admin/homepage/quick-categories` | **已实现**：携带 `version` 原子替换 5 个启用商品分类及顺序，并递增首页版本 |
+| PUT | `/api/admin/homepage/featured-products` | **已实现**：携带 `version` 原子替换 1–8 个精选商品及顺序，并递增首页版本 |
+| GET/POST | `/api/admin/banners` | **已实现**：Banner 分页/新建，只接受可空商品目标 |
+| GET/PATCH/DELETE | `/api/admin/banners/:bannerId` | **已实现**：带 `version` 编辑、显隐和删除 |
+| PUT | `/api/admin/banners/reorder` | **已实现**：校验完整 ID 集合后原子保存顺序 |
 | GET | `/api/admin/orders`、`/api/admin/orders/:orderId` | **已实现**：管理订单筛选分页、不可变明细与收货快照 |
 | POST | `/api/admin/orders/:orderId/confirm`、`cancel` | **已实现**：合法状态迁移、库存事务、幂等和审计 |
 | GET | `/api/admin/logs` | **已实现**：要求 `logs.read` 的只读分页审计日志 |
@@ -793,7 +801,8 @@ npm run admin:bootstrap
   "authorName": "闻远",
   "readingMinutes": 6,
   "isHot": true,
-  "contentBlocks": [
+  "status": "PUBLISHED",
+  "body": [
     { "id": "block-1", "type": "HEADING", "text": "细看其里" },
     { "id": "block-2", "type": "PARAGRAPH", "text": "正文内容……" },
     { "id": "block-3", "type": "IMAGE", "mediaId": "602", "caption": "纹理细节" }
@@ -801,29 +810,37 @@ npm run admin:bootstrap
 }
 ```
 
-首页关系写入统一提交稳定 ID 和顺序：
+首页关系通过两个独立接口提交稳定 ID、顺序和当前首页版本：
 
 ```json
 {
-  "quickCategories": [
+  "version": 3,
+  "items": [
     { "categoryId": "10", "iconText": "手" },
     { "categoryId": "11", "iconText": "茶" },
     { "categoryId": "12", "iconText": "印" },
     { "categoryId": "13", "iconText": "玉" },
     { "categoryId": "14", "iconText": "把" }
-  ],
-  "featuredProductIds": ["10001", "10003", "10007"]
+  ]
 }
 ```
 
-媒体上传使用 `multipart/form-data`，字段名固定为 `file`，单次一张，建议第一版限制 10 MB、长宽各不超过 10,000 px，并在服务端解码验证而非只相信扩展名。成功 `data`：
+```json
+{
+  "version": 4,
+  "productIds": ["10001", "10003", "10007"]
+}
+```
+
+媒体上传支持 `multipart/form-data`（字段名 `file`）以及 `application/octet-stream`/`image/*` 二进制请求体（文件名可放 `x-file-name`），单次一张。当前限制 8 MiB、总像素不超过 2500 万，并依据文件签名和图片头验证，不相信客户端扩展名或 MIME。成功 `data`：
 
 ```json
 {
-  "mediaId": "501",
-  "url": "https://cdn.example.com/wenwan/2026/08/xxx.webp",
+  "id": "501",
+  "fileID": "cloud://prod-.../wenwan/media/2026/08/uuid.webp",
+  "cloudPath": "wenwan/media/2026/08/uuid.webp",
   "mimeType": "image/webp",
-  "byteSize": 182340,
+  "size": 182340,
   "width": 1600,
   "height": 1200
 }
@@ -1083,7 +1100,7 @@ Banner 写入只接受：
 4. 已完成结算预览、幂等下单、库存预占/释放和用户订单查询/取消。
 5. 已完成管理员认证、系统角色、RBAC、会话、只读操作日志，以及分类/材质、商品/SKU 生命周期和库存流水管理 API。
 6. 已完成管理首页聚合、管理订单筛选/详情、订单确认正式扣减、取消/超时释放预占、幂等和审计。
-7. 下一子阶段接入媒体、文章、合集、Banner 和首页配置，再实现管理员账号管理，随后将小程序模拟数据边界切换为真实 API。
+7. 已完成媒体、文章、合集、Banner 和首页配置；下一子阶段实现管理员账号管理，再将小程序模拟数据边界切换为真实 API。
 8. 资质完成后再启用微信支付、退款和发货；以服务端回调和状态机为准。
 
 ## 15. 已确认的业务规则

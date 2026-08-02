@@ -15,6 +15,8 @@ test("migration discovery ignores documentation and sorts migration files", () =
     "20260802100000-create-checkout-sessions.js",
     "20260802110000-seed-admin-rbac-and-login-guards.js",
     "20260802120000-add-product-version.js",
+    "20260802130000-add-cloudbase-media-and-content-versions.js",
+    "20260802131000-allow-incomplete-article-drafts.js",
   ]);
   for (const { migration } of migrations) assert.equal(typeof migration.up, "function");
 });

@@ -19,7 +19,7 @@ const PRODUCT_FIELDS = `
   CAST(m.id AS CHAR) AS material_id,
   m.code AS material_code,
   m.name AS material_name,
-  media.url AS primary_image_url,
+  COALESCE(media.file_id, media.url) AS primary_image_url,
   CAST(vs.min_price_amount AS CHAR) AS min_price_amount,
   CAST(vs.max_price_amount AS CHAR) AS max_price_amount,
   CAST((
@@ -171,7 +171,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
 
   async function findProductImages(productId) {
     return select(`
-      SELECT CAST(pi.id AS CHAR) AS id, media.url, pi.kind, pi.alt_text, CAST(pi.sort_order AS CHAR) AS sort_order
+      SELECT CAST(pi.id AS CHAR) AS id, COALESCE(media.file_id, media.url) AS url, pi.kind, pi.alt_text, CAST(pi.sort_order AS CHAR) AS sort_order
       FROM product_images pi
       INNER JOIN media_assets media ON media.id = pi.media_id AND media.status = 'ACTIVE'
       WHERE pi.product_id = :productId
@@ -204,7 +204,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
   async function findMediaByIds(ids) {
     if (!ids.length) return [];
     return select(`
-      SELECT CAST(id AS CHAR) AS id, url
+      SELECT CAST(id AS CHAR) AS id, COALESCE(file_id, url) AS url
       FROM media_assets
       WHERE id IN (:ids) AND status = 'ACTIVE'
     `, { ids });
@@ -222,7 +222,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
 
   async function findVisibleBanners(now) {
     return select(`
-      SELECT CAST(b.id AS CHAR) AS id, b.title, b.subtitle, media.url AS image_url, b.link_type,
+      SELECT CAST(b.id AS CHAR) AS id, b.title, b.subtitle, COALESCE(media.file_id, media.url) AS image_url, b.link_type,
              CAST(b.target_product_id AS CHAR) AS target_product_id
       FROM banners b
       INNER JOIN media_assets media ON media.id = b.image_media_id AND media.status = 'ACTIVE'
@@ -275,7 +275,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
   async function findHomeCollections(limit = 6) {
     return select(`
       SELECT CAST(col.id AS CHAR) AS id, col.code, col.title, col.latin_title, col.description,
-             media.url AS cover_image_url,
+             COALESCE(media.file_id, media.url) AS cover_image_url,
              CAST((
                SELECT COUNT(*)
                FROM collection_products cp
@@ -296,7 +296,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
   async function findHomeArticles(limit = 4) {
     return select(`
       SELECT CAST(a.id AS CHAR) AS id, a.code, a.title, a.tag, a.summary, a.author_name,
-             CAST(a.reading_minutes AS CHAR) AS reading_minutes, a.published_at, media.url AS cover_image_url
+             CAST(a.reading_minutes AS CHAR) AS reading_minutes, a.published_at, COALESCE(media.file_id, media.url) AS cover_image_url
       FROM articles a
       INNER JOIN media_assets media ON media.id = a.cover_media_id AND media.status = 'ACTIVE'
       WHERE a.status = 'PUBLISHED' AND a.deleted_at IS NULL
@@ -308,7 +308,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
   async function findCollectionById(collectionId) {
     const rows = await select(`
       SELECT CAST(col.id AS CHAR) AS id, col.code, col.title, col.latin_title, col.description,
-             media.url AS cover_image_url
+             COALESCE(media.file_id, media.url) AS cover_image_url
       FROM collections col
       INNER JOIN media_assets media ON media.id = col.cover_media_id AND media.status = 'ACTIVE'
       WHERE col.id = :collectionId AND col.visible = 1 AND col.deleted_at IS NULL
@@ -344,7 +344,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
     const items = await select(`
       SELECT CAST(a.id AS CHAR) AS id, a.code, a.title, a.tag, a.summary, a.author_name,
              CAST(a.reading_minutes AS CHAR) AS reading_minutes, a.is_hot, a.published_at,
-             media.url AS cover_image_url
+             COALESCE(media.file_id, media.url) AS cover_image_url
       FROM articles a
       INNER JOIN media_assets media ON media.id = a.cover_media_id AND media.status = 'ACTIVE'
       WHERE a.status = 'PUBLISHED' AND a.deleted_at IS NULL${tagSql}
@@ -363,7 +363,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
     const rows = await select(`
       SELECT CAST(a.id AS CHAR) AS id, a.code, a.title, a.tag, a.summary, a.author_name,
              CAST(a.reading_minutes AS CHAR) AS reading_minutes, a.is_hot, a.published_at,
-             a.body_json AS body, media.url AS cover_image_url
+             a.body_json AS body, COALESCE(media.file_id, media.url) AS cover_image_url
       FROM articles a
       INNER JOIN media_assets media ON media.id = a.cover_media_id AND media.status = 'ACTIVE'
       WHERE a.id = :articleId AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
@@ -376,7 +376,7 @@ function createPublicRepository({ sequelize = database.sequelize, transaction } 
     return select(`
       SELECT CAST(a.id AS CHAR) AS id, a.code, a.title, a.tag, a.summary, a.author_name,
              CAST(a.reading_minutes AS CHAR) AS reading_minutes, a.published_at,
-             media.url AS cover_image_url
+             COALESCE(media.file_id, media.url) AS cover_image_url
       FROM articles a
       INNER JOIN media_assets media ON media.id = a.cover_media_id AND media.status = 'ACTIVE'
       WHERE a.status = 'PUBLISHED' AND a.deleted_at IS NULL AND a.tag = :tag AND a.id <> :excludeArticleId

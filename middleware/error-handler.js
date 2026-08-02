@@ -6,7 +6,14 @@ function errorHandlerMiddleware(error, req, res, next) {
   if (res.headersSent) return next(error);
 
   let normalizedError = error;
-  if (error && error.type === "entity.parse.failed") {
+  if (error && error.name === "MulterError") {
+    normalizedError = new AppError({
+      code: error.code === "LIMIT_FILE_SIZE" ? ERROR_CODES.MEDIA_TOO_LARGE : ERROR_CODES.BAD_REQUEST,
+      message: error.code === "LIMIT_FILE_SIZE" ? "Image exceeds the configured size limit" : "Invalid media upload",
+      statusCode: error.code === "LIMIT_FILE_SIZE" ? 413 : 400,
+      cause: error,
+    });
+  } else if (error && error.type === "entity.parse.failed") {
     normalizedError = new AppError({
       code: ERROR_CODES.BAD_REQUEST,
       message: "Invalid JSON request body",

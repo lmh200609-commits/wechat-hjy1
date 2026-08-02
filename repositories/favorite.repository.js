@@ -13,7 +13,7 @@ function createFavoriteRepository({ sequelize = database.sequelize, transaction 
              CAST(p.sales_count AS CHAR) AS sales_count, p.deleted_at,
              c.enabled AS category_enabled, c.dimension AS category_dimension,
              COALESCE(m.enabled, 1) AS material_enabled, m.dimension AS material_dimension,
-             media.url AS primary_image_url,
+             COALESCE(media.file_id, media.url) AS primary_image_url,
              CAST(vs.min_price_amount AS CHAR) AS min_price_amount,
              CAST(vs.max_price_amount AS CHAR) AS max_price_amount,
              CAST(vs.available_quantity AS CHAR) AS available_quantity,

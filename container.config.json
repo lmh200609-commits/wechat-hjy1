@@ -23,6 +23,11 @@
     "WECHAT_CLOUD_ENV_ID": "prod-d9g4jzwa5832354ed",
     "WECHAT_MINIPROGRAM_APP_ID": "wx14a6f266208130dd",
     "WECHAT_CLOUD_SERVICE_NAME": "express-zaiy",
+    "MEDIA_STORAGE_DRIVER": "cloudbase",
+    "CLOUDBASE_STORAGE_ENV_ID": "prod-d9g4jzwa5832354ed",
+    "MEDIA_CLOUD_PATH_PREFIX": "wenwan/media",
+    "MEDIA_MAX_BYTES": "8388608",
+    "MEDIA_MAX_PIXELS": "25000000",
     "DATABASE_REQUIRED": "true",
     "DB_CONNECT_ON_START": "true",
     "AUTO_MIGRATE": "false"

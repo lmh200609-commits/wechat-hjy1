@@ -225,12 +225,12 @@ function createAdminCatalogService({
         error(ERROR_CODES.CATEGORY_NOT_FOUND, "Material is unavailable", 409, { field: "materialId" });
       }
     }
-    const mediaRows = await repository.findActiveMedia(input.imageMediaIds);
+    const mediaRows = await repository.findActiveMedia(input.imageMediaIds, true);
     if (mediaRows.length !== input.imageMediaIds.length) {
       error(ERROR_CODES.MEDIA_NOT_FOUND, "One or more product images are unavailable", 409);
     }
     const detailMediaIds = [...new Set(input.detailSections.filter((block) => block.type === "IMAGE").map((block) => block.mediaId))];
-    if (detailMediaIds.length && (await repository.findActiveMedia(detailMediaIds)).length !== detailMediaIds.length) {
+    if (detailMediaIds.length && (await repository.findActiveMedia(detailMediaIds, true)).length !== detailMediaIds.length) {
       error(ERROR_CODES.MEDIA_NOT_FOUND, "One or more detail images are unavailable", 409);
     }
     return { category, material };
@@ -298,6 +298,10 @@ function createAdminCatalogService({
       const id = await repository.insertProduct({ ...persisted, code });
       await saveVariants(repository, id, { ...input, productCode: code }, context);
       await repository.replaceProductImages(id, input.imageMediaIds, input.primaryMediaId, input.name);
+      await repository.refreshReferenceState([
+        ...input.imageMediaIds,
+        ...input.detailSections.filter((block) => block.type === "IMAGE").map((block) => block.mediaId),
+      ]);
       await writeAudit(repository, {
         ...auditMeta(context, meta), module: "products", action: "PRODUCT_CREATED",
         targetType: "PRODUCT", targetId: id, targetLabel: input.name,
@@ -317,10 +321,20 @@ function createAdminCatalogService({
       }
       await assertProductRelations(repository, input, row.sale_status === "ON_SALE");
       const existing = await repository.findProductVariants(row.id, true);
+      const existingImages = await repository.findProductImages(row.id);
+      const previousDetailMediaIds = parseJson(row.detail_sections_json, [])
+        .filter((block) => String(block.type).toUpperCase() === "IMAGE")
+        .map((block) => String(block.mediaId));
       const persisted = productPersistedInput(input);
       await saveVariants(repository, row.id, { ...input, productCode: row.code }, context, existing);
       await repository.replaceProductImages(row.id, input.imageMediaIds, input.primaryMediaId, input.name);
       await repository.updateProduct(row.id, persisted);
+      await repository.refreshReferenceState([
+        ...existingImages.map((image) => image.media_id),
+        ...previousDetailMediaIds,
+        ...input.imageMediaIds,
+        ...input.detailSections.filter((block) => block.type === "IMAGE").map((block) => block.mediaId),
+      ]);
       await writeAudit(repository, {
         ...auditMeta(context, meta), module: "products", action: "PRODUCT_UPDATED",
         targetType: "PRODUCT", targetId: row.id, targetLabel: input.name,
@@ -360,7 +374,12 @@ function createAdminCatalogService({
     return transaction(async (repository) => {
       const row = await repository.findProduct(productId, true);
       if (!row || row.sale_status === "DELETED") error(ERROR_CODES.PRODUCT_NOT_FOUND, "Product not found", 404);
+      const images = await repository.findProductImages(productId);
+      const detailMediaIds = parseJson(row.detail_sections_json, [])
+        .filter((block) => String(block.type).toUpperCase() === "IMAGE")
+        .map((block) => String(block.mediaId));
       await repository.softDeleteProduct(productId);
+      await repository.refreshReferenceState([...images.map((image) => image.media_id), ...detailMediaIds]);
       await writeAudit(repository, {
         ...auditMeta(context, meta), module: "products", action: "PRODUCT_DELETED",
         targetType: "PRODUCT", targetId: row.id, targetLabel: row.name,
