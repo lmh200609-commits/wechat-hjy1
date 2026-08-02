@@ -40,7 +40,14 @@ if (env.corsOrigins.length) {
 }
 
 app.use(express.urlencoded({ extended: false, limit: env.requestBodyLimit }));
-app.use(express.json({ limit: env.requestBodyLimit }));
+const jsonParser = express.json({ limit: env.requestBodyLimit });
+app.use((req, res, next) => {
+  const isMediaJsonUpload = req.method === "POST"
+    && req.path === "/api/admin/media/images"
+    && req.is("application/json");
+  if (isMediaJsonUpload) return next();
+  return jsonParser(req, res, next);
+});
 app.use(responseMiddleware);
 
 app.get("/", (req, res) => res.success({

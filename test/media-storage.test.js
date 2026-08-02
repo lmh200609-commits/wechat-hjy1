@@ -5,6 +5,7 @@ process.env.NODE_ENV = "test";
 const { createMockStorage } = require("../storage/mock-storage");
 const { createCloudBaseStorage } = require("../storage/cloudbase-storage");
 const { inspectImage } = require("../utils/image-metadata");
+const { decodeBase64Image } = require("../middleware/media-upload");
 
 function png(width = 2, height = 3) {
   const buffer = Buffer.alloc(24);
@@ -17,6 +18,17 @@ function png(width = 2, height = 3) {
 test("image inspection trusts file signatures rather than client MIME labels", () => {
   assert.deepEqual(inspectImage(png()), { mimeType: "image/png", extension: "png", width: 2, height: 3 });
   assert.equal(inspectImage(Buffer.from("not-an-image")), null);
+});
+
+test("JSON media upload decodes canonical Base64 image data", () => {
+  const source = png();
+  assert.deepEqual(decodeBase64Image(source.toString("base64")), source);
+  assert.deepEqual(decodeBase64Image(`data:image/png;base64,${source.toString("base64")}`), source);
+});
+
+test("JSON media upload rejects malformed Base64 data", () => {
+  assert.throws(() => decodeBase64Image("not@base64"), /Invalid Base64 image data/);
+  assert.equal(decodeBase64Image(""), null);
 });
 
 test("mock storage keeps local tests isolated from CloudBase", async () => {
@@ -42,4 +54,21 @@ test("CloudBase adapter uses fileID upload and delete contracts", async () => {
   assert.deepEqual(calls[0], ["init", { env: "prod-test" }]);
   assert.equal(calls[1][1].cloudPath, "path.png");
   assert.deepEqual(calls[2][1], { fileList: ["cloud://prod-test.bucket/path.png"] });
+});
+
+test("CloudBase adapter uses the current CloudRun environment in production mode", async () => {
+  const calls = [];
+  const currentEnv = Symbol("current-env");
+  createCloudBaseStorage({
+    envId: "prod-test",
+    useCurrentEnvironment: true,
+    sdk: {
+      SYMBOL_CURRENT_ENV: currentEnv,
+      init(input) {
+        calls.push(input);
+        return { uploadFile() {}, deleteFile() {} };
+      },
+    },
+  });
+  assert.equal(calls[0].env, currentEnv);
 });

@@ -14,6 +14,8 @@ const mediaValidators = require("../validators/media.validators");
 const { uploadImage } = require("../middleware/media-upload");
 const { createWechatGatewayMiddleware } = require("../middleware/wechat-user");
 const { createAdminAuthMiddleware, requireAdminPermission } = require("../middleware/admin-auth");
+const adminUserController = require("../controllers/admin-user.controller");
+const adminUserValidators = require("../validators/admin-user.validators");
 
 const router = express.Router();
 
@@ -26,6 +28,11 @@ router.post("/auth/refresh", validate(validators.emptyBody), asyncHandler(contro
 router.post("/auth/logout", validate(validators.emptyBody), asyncHandler(controller.logout));
 router.get("/logs", requireAdminPermission("logs.read"), validate(validators.logs), asyncHandler(controller.logs));
 router.get("/dashboard", requireAdminPermission("dashboard.read"), asyncHandler(orderController.dashboard));
+
+router.get("/admin-roles", requireAdminPermission("admins.read"), asyncHandler(adminUserController.roles));
+router.get("/admin-users", requireAdminPermission("admins.read"), asyncHandler(adminUserController.users));
+router.post("/admin-users", requireAdminPermission("admins.write"), validate(adminUserValidators.create), asyncHandler(adminUserController.create));
+router.patch("/admin-users/:adminUserId", requireAdminPermission("admins.write"), validate(adminUserValidators.update), asyncHandler(adminUserController.update));
 
 router.get("/categories", requireAdminPermission("categories.read"), validate(catalogValidators.categoryList), asyncHandler(catalogController.categories));
 router.post("/categories", requireAdminPermission("categories.write"), validate(catalogValidators.categoryCreate), asyncHandler(catalogController.createCategory));

@@ -5,7 +5,12 @@ const { createMockStorage } = require("./mock-storage");
 let singleton;
 
 function createStorage(config = env.mediaStorage) {
-  if (config.driver === "cloudbase") return createCloudBaseStorage({ envId: config.cloudEnvId });
+  if (config.driver === "cloudbase") {
+    return createCloudBaseStorage({
+      envId: config.cloudEnvId,
+      useCurrentEnvironment: config.useCurrentEnvironment,
+    });
+  }
   return createMockStorage();
 }
 

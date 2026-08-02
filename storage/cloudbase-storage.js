@@ -1,7 +1,10 @@
-function createCloudBaseStorage({ envId, sdk } = {}) {
+function createCloudBaseStorage({ envId, sdk, useCurrentEnvironment = false } = {}) {
   if (!envId) throw new Error("CloudBase storage environment id is required");
   const cloudbase = sdk || require("@cloudbase/node-sdk");
-  const app = typeof cloudbase.init === "function" ? cloudbase.init({ env: envId }) : cloudbase;
+  const runtimeEnv = useCurrentEnvironment && cloudbase.SYMBOL_CURRENT_ENV
+    ? cloudbase.SYMBOL_CURRENT_ENV
+    : envId;
+  const app = typeof cloudbase.init === "function" ? cloudbase.init({ env: runtimeEnv }) : cloudbase;
 
   return {
     provider: "CLOUDBASE",

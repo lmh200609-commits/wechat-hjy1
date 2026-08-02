@@ -25,6 +25,7 @@
     "WECHAT_CLOUD_SERVICE_NAME": "express-zaiy",
     "MEDIA_STORAGE_DRIVER": "cloudbase",
     "CLOUDBASE_STORAGE_ENV_ID": "prod-d9g4jzwa5832354ed",
+    "CLOUDBASE_STORAGE_USE_CURRENT_ENV": "true",
     "MEDIA_CLOUD_PATH_PREFIX": "wenwan/media",
     "MEDIA_MAX_BYTES": "8388608",
     "MEDIA_MAX_PIXELS": "25000000",

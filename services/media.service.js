@@ -7,6 +7,7 @@ const ERROR_CODES = require("../constants/error-codes");
 const createMediaRepository = require("../repositories/media.repository");
 const { getStorage } = require("../storage");
 const { inspectImage } = require("../utils/image-metadata");
+const logger = require("../utils/logger");
 const { writeAudit } = require("./audit.service");
 
 function fail(code, message, statusCode, details) {
@@ -63,6 +64,11 @@ function createMediaService({
     try {
       uploaded = await storage.upload({ cloudPath: targetPath, buffer: file.buffer, mimeType: image.mimeType });
     } catch (error) {
+      logger.error("media.storage.upload_failed", {
+        provider: storage.provider,
+        code: error?.code || error?.name || "UNKNOWN",
+        requestId: error?.requestId || null,
+      });
       fail(ERROR_CODES.MEDIA_STORAGE_FAILED, "Media storage upload failed", 503);
     }
     try {
@@ -115,6 +121,11 @@ function createMediaService({
     try {
       await storage.delete({ fileID: marked.file_id });
     } catch (error) {
+      logger.error("media.storage.delete_failed", {
+        provider: storage.provider,
+        code: error?.code || error?.name || "UNKNOWN",
+        requestId: error?.requestId || null,
+      });
       await transaction((repo) => repo.setStatus(mediaId, "ACTIVE"));
       fail(ERROR_CODES.MEDIA_STORAGE_FAILED, "Media storage deletion failed", 503);
     }
