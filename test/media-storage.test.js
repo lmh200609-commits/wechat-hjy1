@@ -1,11 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const express = require("express");
 
 process.env.NODE_ENV = "test";
 const { createMockStorage } = require("../storage/mock-storage");
 const { createCloudBaseStorage } = require("../storage/cloudbase-storage");
 const { inspectImage } = require("../utils/image-metadata");
-const { decodeBase64Image } = require("../middleware/media-upload");
+const { decodeBase64Image, uploadImage } = require("../middleware/media-upload");
 
 function png(width = 2, height = 3) {
   const buffer = Buffer.alloc(24);
@@ -31,6 +32,24 @@ test("JSON media upload rejects malformed Base64 data", () => {
   assert.equal(decodeBase64Image(""), null);
 });
 
+test("JSON media upload middleware exposes the decoded image to the route", async (context) => {
+  const app = express();
+  app.post("/upload", uploadImage, (req, res) => {
+    res.json({ size: req.file?.size, name: req.file?.originalname });
+  });
+  const server = app.listen(0);
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  await new Promise((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  const response = await fetch(`http://127.0.0.1:${address.port}/upload`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fileName: "test.png", contentBase64: png().toString("base64") }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { size: 24, name: "test.png" });
+});
+
 test("mock storage keeps local tests isolated from CloudBase", async () => {
   const storage = createMockStorage();
   const uploaded = await storage.upload({ cloudPath: "wenwan/media/test.png", buffer: png() });
@@ -49,6 +68,7 @@ test("CloudBase adapter uses fileID upload and delete contracts", async () => {
       async deleteFile(input) { calls.push(["delete", input]); return { fileList: [{ code: "SUCCESS" }] }; },
     }; } },
   });
+  assert.deepEqual(calls, []);
   const uploaded = await storage.upload({ cloudPath: "path.png", buffer: png() });
   await storage.delete({ fileID: uploaded.fileID });
   assert.deepEqual(calls[0], ["init", { env: "prod-test" }]);
@@ -56,19 +76,21 @@ test("CloudBase adapter uses fileID upload and delete contracts", async () => {
   assert.deepEqual(calls[2][1], { fileList: ["cloud://prod-test.bucket/path.png"] });
 });
 
-test("CloudBase adapter uses the current CloudRun environment in production mode", async () => {
+test("CloudBase adapter always initializes with the configured environment id", async () => {
   const calls = [];
-  const currentEnv = Symbol("current-env");
-  createCloudBaseStorage({
+  const storage = createCloudBaseStorage({
     envId: "prod-test",
-    useCurrentEnvironment: true,
     sdk: {
-      SYMBOL_CURRENT_ENV: currentEnv,
       init(input) {
         calls.push(input);
-        return { uploadFile() {}, deleteFile() {} };
+        return {
+          async uploadFile() { return { fileID: "cloud://prod-test.bucket/path.png" }; },
+          async deleteFile() { return { fileList: [{ code: "SUCCESS" }] }; },
+        };
       },
     },
   });
-  assert.equal(calls[0].env, currentEnv);
+  assert.deepEqual(calls, []);
+  await storage.upload({ cloudPath: "path.png", buffer: png() });
+  assert.deepEqual(calls, [{ env: "prod-test" }]);
 });

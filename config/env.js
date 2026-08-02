@@ -107,7 +107,6 @@ function parseEnv(source = process.env) {
   const mediaStorage = {
     driver: readString(source, "MEDIA_STORAGE_DRIVER", isProduction ? "cloudbase" : "mock").toLowerCase(),
     cloudEnvId: readString(source, "CLOUDBASE_STORAGE_ENV_ID", wechat.cloudEnvId),
-    useCurrentEnvironment: readBoolean(source, "CLOUDBASE_STORAGE_USE_CURRENT_ENV", isProduction),
     cloudPathPrefix: readString(source, "MEDIA_CLOUD_PATH_PREFIX", "wenwan/media").replace(/^\/+|\/+$/g, ""),
     maxBytes: readInteger(source, "MEDIA_MAX_BYTES", 8388608, { min: 1024, max: 20971520 }),
     maxPixels: readInteger(source, "MEDIA_MAX_PIXELS", 25000000, { min: 10000, max: 100000000 }),
