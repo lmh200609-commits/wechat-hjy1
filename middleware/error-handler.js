@@ -20,6 +20,27 @@ function errorHandlerMiddleware(error, req, res, next) {
       statusCode: 413,
       cause: error,
     });
+  } else if (error && [
+    "SequelizeUniqueConstraintError",
+    "SequelizeForeignKeyConstraintError",
+  ].includes(error.name)) {
+    normalizedError = new AppError({
+      code: ERROR_CODES.CONFLICT,
+      message: "The requested change conflicts with existing data",
+      statusCode: 409,
+      cause: error,
+    });
+  } else if (error && (
+    String(error.name || "").startsWith("SequelizeConnection")
+    || ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "PROTOCOL_CONNECTION_LOST"].includes(error.code)
+  )) {
+    normalizedError = new AppError({
+      code: ERROR_CODES.SERVICE_UNAVAILABLE,
+      message: "Service temporarily unavailable",
+      statusCode: 503,
+      expose: true,
+      cause: error,
+    });
   }
 
   const knownError = normalizedError instanceof AppError;

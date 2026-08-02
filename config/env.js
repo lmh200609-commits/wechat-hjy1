@@ -1,3 +1,16 @@
+const path = require("path");
+
+function loadLocalEnv() {
+  if (process.env.NODE_ENV === "test" || typeof process.loadEnvFile !== "function") return;
+  try {
+    process.loadEnvFile(path.join(__dirname, "..", ".env"));
+  } catch (error) {
+    if (error && error.code !== "ENOENT") throw error;
+  }
+}
+
+loadLocalEnv();
+
 const VALID_NODE_ENVS = new Set(["development", "test", "production"]);
 
 class ConfigError extends Error {
@@ -79,6 +92,18 @@ function parseEnv(source = process.env) {
   }
 
   const databaseRequired = readBoolean(source, "DATABASE_REQUIRED", isProduction);
+  const wechat = {
+    cloudEnvId: readString(source, "WECHAT_CLOUD_ENV_ID"),
+    miniProgramAppId: readString(source, "WECHAT_MINIPROGRAM_APP_ID"),
+    cloudServiceName: readString(source, "WECHAT_CLOUD_SERVICE_NAME", "express-zaiy"),
+  };
+  const adminAuth = {
+    sessionTtlSeconds: readInteger(source, "ADMIN_SESSION_TTL_SECONDS", 7200, { min: 900, max: 86400 }),
+    loginWindowSeconds: readInteger(source, "ADMIN_LOGIN_WINDOW_SECONDS", 900, { min: 60, max: 86400 }),
+    loginMaxAttempts: readInteger(source, "ADMIN_LOGIN_MAX_ATTEMPTS", 10, { min: 3, max: 100 }),
+    accountMaxAttempts: readInteger(source, "ADMIN_ACCOUNT_MAX_ATTEMPTS", 5, { min: 3, max: 20 }),
+    lockSeconds: readInteger(source, "ADMIN_LOCK_SECONDS", 1800, { min: 60, max: 86400 }),
+  };
   if (databaseRequired) {
     const missing = [];
     if (!database.host) missing.push("MYSQL_ADDRESS or MYSQL_HOST");
@@ -87,6 +112,16 @@ function parseEnv(source = process.env) {
     if (!database.name) missing.push("MYSQL_DATABASE");
     if (missing.length) {
       throw new ConfigError(`Missing required database configuration: ${missing.join(", ")}`);
+    }
+  }
+
+  if (isProduction) {
+    const missingWechat = [];
+    if (!wechat.cloudEnvId) missingWechat.push("WECHAT_CLOUD_ENV_ID");
+    if (!wechat.miniProgramAppId) missingWechat.push("WECHAT_MINIPROGRAM_APP_ID");
+    if (!wechat.cloudServiceName) missingWechat.push("WECHAT_CLOUD_SERVICE_NAME");
+    if (missingWechat.length) {
+      throw new ConfigError(`Missing required WeChat configuration: ${missingWechat.join(", ")}`);
     }
   }
 
@@ -107,6 +142,8 @@ function parseEnv(source = process.env) {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean),
+    wechat: Object.freeze(wechat),
+    adminAuth: Object.freeze(adminAuth),
     database: Object.freeze(database),
   });
 }

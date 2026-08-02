@@ -80,3 +80,14 @@ test("invalid JSON returns BAD_REQUEST instead of INTERNAL_ERROR", async () => {
   assert.equal(response.status, 400);
   assert.equal(body.code, "BAD_REQUEST");
 });
+
+test("personal endpoints reject requests without a trusted gateway identity", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/me?openid=forged`, {
+    headers: { "content-type": "application/json" },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 401);
+  assert.equal(body.success, false);
+  assert.equal(body.code, "USER_IDENTITY_MISSING");
+});

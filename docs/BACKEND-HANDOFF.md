@@ -1,14 +1,18 @@
 # 后端交接与 API 契约
 
-> 版本：1.2（前后端共享配置基线，2026-08-02）
+> 版本：1.9（管理首页与订单实施基线，2026-08-02）
 > 事实基线：当前 `miniprogram` 原生微信小程序代码、`data/*`、`utils/shop-store.js`、`utils/admin-store.js`、`app.json` 与现有分析文档。  
 > 本文只定义后端边界和建议契约，不代表模拟数据已成为正式数据库数据，也不包含后端实现代码。
+
+> 当前实施状态：阶段 0 工程基础、阶段 1 核心数据库结构、阶段 2 公共浏览 API、阶段 3 普通用户可信身份、阶段 4 购物车与收货地址、阶段 5 普通用户收藏/结算/订单、阶段 6.1 管理员认证与 RBAC、阶段 6.2 分类/材质、商品/SKU 生命周期和库存流水管理，以及阶段 6.3 管理首页统计和管理订单闭环已在 `D:\Projects\wechat-hjy1` 完成。以上接口均已通过真实 MySQL 契约验证。首位真实超级管理员已由项目负责人通过受控命令初始化，文档和代码不记录其账号或密码。小程序前端仍读取本地模拟层，尚未切换到这些 API；正式数据库也尚未导入前端模拟商品和内容。
 
 ## 0. 已确认架构与安全边界
 
 - 唯一客户端是同一 AppID 下的原生微信小程序，普通用户端和管理员端都在该小程序内。
 - 正式链路为：小程序 `wx.cloud.callContainer` → 微信云托管服务 `express-zaiy` → Express → MySQL。
 - 普通用户不使用账号密码。Express 只信任微信云托管注入的 `x-wx-openid`，按 OpenID 查询或首次自动创建 `users` 记录。
+- 当前云环境为 `prod-d9g4jzwa5832354ed`，小程序 AppID 为 `wx14a6f266208130dd`，云托管服务名为 `express-zaiy`；这些是非敏感路由标识，生产容器仍应通过环境变量注入。
+- `/api/v1/me/*` 除 OpenID 外还校验云托管注入的 `x-wx-appid`、`x-wx-env` 和非空 `x-wx-source`。已认证接口只能通过云托管网关暴露，不能把允许客户端伪造这些请求头的直连容器地址作为认证入口。
 - 前端不得保存 AppSecret，也不得提交 `openid`、`userId` 或 `role` 作为可信身份；这些值即使出现在请求中，后端也必须忽略。
 - 管理员使用独立管理员账号登录。后端签发管理员会话或 Token，所有 `/api/admin/*` 接口必须在后端校验登录状态和权限。
 - 当前仍是静态模拟阶段：`wx` 本地存储保存模拟用户数据和模拟管理员会话，不调用真实 API，不调用 `wx.requestPayment`。
@@ -409,21 +413,159 @@
 
 ### 5.2 普通用户接口
 
-所有 `/api/v1/me/*` 都由后端从可信 `x-wx-openid` 得到内部用户，不接受客户端指定资源归属用户。
+所有 `/api/v1/me/*` 都由后端从可信 `x-wx-openid` 得到内部用户，不接受客户端指定资源归属用户。下表接口均已实现；支付、管理员确认、退款和发货仍未启用。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/v1/me` | 查询或首次创建后返回内部用户资料 |
-| GET | `/api/v1/me/summary` | 订单、收藏、地址、购物车数量 |
-| GET/POST/PATCH/DELETE | `/api/v1/me/cart...` | 购物车查增改删、勾选、全选 |
-| GET/PUT/DELETE | `/api/v1/me/favorites...` | 收藏列表及幂等收藏/取消 |
-| GET/POST/PATCH/DELETE | `/api/v1/me/addresses...` | 地址 CRUD 与设默认 |
-| POST | `/api/v1/me/checkout/preview` | 后端校验商品/SKU、价格、库存并生成短时结算令牌 |
-| POST | `/api/v1/me/orders` | 使用结算令牌和幂等键创建订单 |
-| GET | `/api/v1/me/orders` | 状态筛选的订单列表 |
-| GET | `/api/v1/me/orders/:orderId` | 订单详情 |
-| GET | `/api/v1/me/orders/by-no/:orderNo` | 下单成功页查询自己的订单 |
-| POST | `/api/v1/me/orders/:orderId/cancel` | 按规则取消并处理库存 |
+| GET | `/api/v1/me` | **已实现**：查询或首次创建后返回内部用户资料，不返回 OpenID |
+| GET | `/api/v1/me/summary` | **已实现**：订单数、收藏数、有效地址数、购物车商品数量之和 |
+| GET/POST/PATCH/DELETE | `/api/v1/me/cart...` | **已实现**：购物车查增改删、勾选、全选 |
+| GET/PUT/DELETE | `/api/v1/me/favorites...` | **已实现**：收藏列表及幂等收藏/取消 |
+| GET/POST/PATCH/DELETE | `/api/v1/me/addresses...` | **已实现**：地址 CRUD 与设默认 |
+| POST | `/api/v1/me/checkout/preview` | **已实现**：校验商品/SKU、价格、库存并生成 10 分钟结算令牌 |
+| POST | `/api/v1/me/orders` | **已实现**：使用结算令牌和 `Idempotency-Key` 创建订单并预占库存 |
+| GET | `/api/v1/me/orders` | **已实现**：状态筛选的订单列表 |
+| GET | `/api/v1/me/orders/:orderId` | **已实现**：当前用户订单详情 |
+| GET | `/api/v1/me/orders/by-no/:orderNo` | **已实现**：下单成功页按订单号查询自己的订单 |
+| POST | `/api/v1/me/orders/:orderId/cancel` | **已实现**：幂等取消待确认订单并释放预占 |
+
+已实现响应契约：
+
+- `GET /api/v1/me` 返回 `id/nickname/avatarUrl/status/memberSince/createdAt/updatedAt/lastSeenAt`，其中 `id` 是内部字符串 ID，绝不返回 OpenID。
+- `GET /api/v1/me/summary` 返回 `orderCount/favoriteCount/addressCount/cartCount`；`cartCount` 为购物车各行 `quantity` 之和，不是购物车行数。
+- 首次识别使用 `users.openid` 唯一索引及原子 upsert，重复或并发请求返回同一内部用户；禁用用户返回 `USER_DISABLED`。
+- 缺少可信身份返回 `USER_IDENTITY_MISSING`，云环境、AppID、来源或 OpenID 格式校验失败返回 `USER_IDENTITY_UNTRUSTED`。错误响应和日志均不得包含 OpenID。
+
+#### 5.2.1 已实现的购物车契约
+
+请求：
+
+```json
+POST /api/v1/me/cart/items
+{ "productId": "10001", "variantId": "20001", "quantity": 1 }
+
+PATCH /api/v1/me/cart/items/30001
+{ "quantity": 2, "checked": true }
+
+PATCH /api/v1/me/cart/selection
+{ "checked": true, "itemIds": ["30001", "30002"] }
+```
+
+`itemIds` 可省略，表示作用于当前用户全部购物车项；传空数组表示不修改。任何请求均不得包含 `userId/openid/role`。新增相同 SKU 时原子累加数量并重新选中，合计数量必须在 1–99 且不超过实时可售库存。
+
+查询及每次写入后的响应 `data`：
+
+```json
+{
+  "items": [{
+    "id": "30001",
+    "productId": "10001",
+    "variantId": "20001",
+    "quantity": 2,
+    "checked": true,
+    "product": {
+      "id": "10001",
+      "name": "紫檀·素工圆珠",
+      "subtitle": "小叶紫檀 素面无瑕手串",
+      "primaryImageUrl": "https://...",
+      "saleStatus": "ON_SALE"
+    },
+    "variant": {
+      "id": "20001",
+      "specLabel": "1.8cm · 18颗",
+      "priceAmount": 168000,
+      "originalPriceAmount": 198200,
+      "availableQuantity": 8,
+      "enabled": true
+    },
+    "lineAmount": 336000,
+    "available": true,
+    "availabilityReason": null,
+    "createdAt": "2026-08-02T00:00:00.000Z",
+    "updatedAt": "2026-08-02T00:00:00.000Z"
+  }],
+  "summary": {
+    "cartCount": 2,
+    "selectedCount": 2,
+    "selectedAmount": 336000,
+    "allChecked": true,
+    "currency": "CNY"
+  }
+}
+```
+
+不可用原因固定为 `PRODUCT_OFF_SHELF/VARIANT_DISABLED/OUT_OF_STOCK/INSUFFICIENT_STOCK`。不可用项仍出现在购物车供用户识别和删除，但 `checked=false` 且不进入金额。新增、改数量或重新选中不可用项返回 `CART_ITEM_UNAVAILABLE` 或 `CART_QUANTITY_EXCEEDS_STOCK`。删除不存在或不属于当前用户的项保持幂等，不泄露其他用户数据。
+
+#### 5.2.2 已实现的地址契约
+
+新建/编辑请求使用拆分地区字段：
+
+```json
+{
+  "recipientName": "林清和",
+  "phone": "13900005678",
+  "province": "江苏省",
+  "city": "苏州市",
+  "district": "姑苏区",
+  "detail": "平江路 32 号 拙政雅集 2 号院",
+  "postalCode": null,
+  "label": "家",
+  "isDefault": true
+}
+```
+
+`POST /api/v1/me/addresses` 需要主体字段；`PATCH /api/v1/me/addresses/:addressId` 支持部分修改；`PUT /api/v1/me/addresses/:addressId/default` 设置默认；DELETE 为软删除且幂等。响应同时返回拆分的 `province/city/district` 和方便当前 UI 展示的派生 `region`，字段为 `id/recipientName/phone/province/city/district/region/detail/postalCode/label/isDefault/createdAt/updatedAt`。
+
+所有地址写入先锁定当前用户记录以串行化同一用户的变更。第一条地址无论请求值如何都自动成为默认地址；设置新默认地址会在同一事务中取消旧默认；取消或删除当前默认地址后自动选择最早保存的有效地址。第 21 条地址返回 `ADDRESS_LIMIT_REACHED`，跨用户读取或修改统一按不存在处理。
+
+#### 5.2.3 已实现的收藏契约
+
+- `GET /api/v1/me/favorites?page=1&pageSize=20` 返回统一分页结构，商品价格和库存状态按当前数据库实时派生；下架后仍可出现在收藏列表，但 `available=false`。
+- `PUT /api/v1/me/favorites/:productId` 与 `DELETE` 均为幂等操作；重复收藏不增加记录，重复取消不报错。
+- 新收藏只接受当前公开目录中的商品；不存在、已删除或已下架商品返回 `FAVORITE_NOT_AVAILABLE`。
+- 收藏归属只取当前可信用户，跨用户列表和操作不会互相影响。
+
+#### 5.2.4 已实现的结算与订单契约
+
+购物车结算预览：
+
+```json
+POST /api/v1/me/checkout/preview
+{ "source": "CART", "cartItemIds": ["30001", "30002"] }
+```
+
+`cartItemIds` 可省略，表示当前用户所有已勾选项；显式传入时全部 ID 都必须属于当前用户且有效，不能静默忽略部分项。
+
+立即购买预览：
+
+```json
+POST /api/v1/me/checkout/preview
+{
+  "source": "BUY_NOW",
+  "items": [{ "productId": "10001", "variantId": "20001", "quantity": 1 }]
+}
+```
+
+同一请求不允许重复 `variantId`。服务端忽略客户端价格，重新校验商品、分类、材质、SKU、实时售价及 `onHandQuantity-reservedQuantity`，返回一次性原始 `checkoutToken`、实时商品项、地址列表、默认地址、金额和 10 分钟有效期；数据库只保存令牌 SHA-256 哈希。
+
+创建订单：
+
+```text
+POST /api/v1/me/orders
+Idempotency-Key: checkout-20260802-0001
+```
+
+```json
+{ "checkoutToken": "短时结算令牌", "addressId": "40001", "remark": "请妥善包装" }
+```
+
+- `Idempotency-Key` 必须放请求头，长度 16–80；客户端不能在 body 中提交 `userId/openid/role`、价格、金额、状态或库存。
+- 同一用户、同一幂等键的并发重试只产生一个订单；首次返回 HTTP 201，幂等重放返回 HTTP 200 和同一订单。
+- 创建事务按稳定 SKU 顺序加锁，再次校验价格和可售库存，写订单及不可变明细/地址快照、库存 `ORDER_RESERVE` 流水，最后消费结算令牌；购物车来源只删除已下单项。
+- 新订单固定 `status=PENDING_CONFIRMATION`、`paymentStatus=NOT_ENABLED`、`fulfillmentStatus=NOT_APPLICABLE`，运费和优惠为 0，不触发 `wx.requestPayment`。
+- 用户只能查询自己的订单。列表支持 `ALL/PENDING_CONFIRMATION/CONFIRMED/CANCELLED/CLOSED`，详情支持内部 ID 或订单号。
+- 仅 `PENDING_CONFIRMATION` 可由用户取消；首次取消写一条 `ORDER_RELEASE` 流水，重复取消返回同一已取消订单且不重复释放。
+- 待确认订单 24 小时超时后由 `npm run orders:expire` 转为 `CLOSED` 并释放预占。生产环境必须将该命令配置为云托管定时任务；建议每 5 分钟运行一次，任务可安全重复执行。
 
 ### 5.3 管理员接口
 
@@ -431,21 +573,22 @@
 
 | 方法 | 路径 | 权限/用途 |
 |---|---|---|
-| POST | `/api/admin/auth/login` | 账号密码登录；限流、失败锁定、签发会话 |
-| POST | `/api/admin/auth/refresh` | 轮换短期访问凭证；若使用服务端 Cookie 会话可省略 |
-| POST | `/api/admin/auth/logout` | 撤销当前管理会话 |
-| GET | `/api/admin/me` | 当前管理员、角色和权限码 |
-| GET | `/api/admin/dashboard` | 管理首页统计 |
+| POST | `/api/admin/auth/login` | **已实现**：可信云托管网关内账号密码登录、数据库限流、失败锁定、签发会话 |
+| POST | `/api/admin/auth/refresh` | **已实现**：原子轮换短期不透明 Token，旧 Token 立即失效 |
+| POST | `/api/admin/auth/logout` | **已实现**：撤销当前管理会话 |
+| GET | `/api/admin/me` | **已实现**：当前管理员、角色和服务端权限码 |
+| GET | `/api/admin/dashboard` | **已实现**：用户、商品、SKU 库存、订单和内容聚合统计 |
 | POST | `/api/admin/media/images` | 上传单张图片并返回 `mediaId/url/width/height/byteSize` |
 | DELETE | `/api/admin/media/:mediaId` | 删除未被引用的媒体；被引用返回 `MEDIA_IN_USE` |
-| GET/POST | `/api/admin/products` | 商品管理列表/新建商品 |
-| GET/PATCH/DELETE | `/api/admin/products/:productId` | 商品详情、事务性编辑、软删除 |
-| POST | `/api/admin/products/:productId/on-sale` | 上架并校验主图、启用 SKU、售价和库存结构 |
-| POST | `/api/admin/products/:productId/off-shelf` | 下架；购物车/结算实时变为不可用 |
-| POST | `/api/admin/variants/:variantId/inventory-adjustments` | 规格级库存调整并记录流水，不直接覆盖库存 |
-| GET/POST | `/api/admin/categories` | 分类/材质列表与新增，使用 `dimension` |
-| PATCH/DELETE | `/api/admin/categories/:categoryId` | 改名、启停、删除前引用检查；改名不变更 ID/code |
-| PUT | `/api/admin/categories/reorder` | 同一维度整体排序 |
+| GET/POST | `/api/admin/products` | **已实现**：商品管理分页列表/事务性新建商品和完整 SKU、图库关系 |
+| GET/PATCH/DELETE | `/api/admin/products/:productId` | **已实现**：详情、带 `version` 乐观锁的事务性编辑、软删除及失效关系清理 |
+| POST | `/api/admin/products/:productId/on-sale` | **已实现**：上架并校验启用分类/材质、有效主图、启用 SKU 和售价 |
+| POST | `/api/admin/products/:productId/off-shelf` | **已实现**：下架；公共浏览、购物车和结算实时变为不可用 |
+| GET | `/api/admin/variants/:variantId/inventory-movements` | **已实现**：规格库存流水分页查询 |
+| POST | `/api/admin/variants/:variantId/inventory-adjustments` | **已实现**：规格级有原因调整、版本校验和流水，不直接覆盖库存 |
+| GET/POST | `/api/admin/categories` | **已实现**：分类/材质列表与新增，使用稳定 `dimension/id/code` |
+| PATCH/DELETE | `/api/admin/categories/:categoryId` | **已实现**：改名、启停、引用保护删除；改名不变更 ID/code |
+| PUT | `/api/admin/categories/reorder` | **已实现**：同一维度完整 ID 集合的事务性整体排序 |
 | GET/POST | `/api/admin/articles` | 文章管理列表/新建草稿 |
 | GET/PATCH/DELETE | `/api/admin/articles/:articleId` | 编辑、读取、软删除文章 |
 | POST | `/api/admin/articles/:articleId/publish` | 发布并执行完整内容校验 |
@@ -458,12 +601,59 @@
 | GET/POST | `/api/admin/banners` | Banner 列表/新建 |
 | PATCH/DELETE | `/api/admin/banners/:bannerId` | 编辑、显隐和删除 |
 | PUT | `/api/admin/banners/reorder` | 原子保存 Banner 顺序 |
-| GET | `/api/admin/orders`、`/api/admin/orders/:orderId` | 管理订单列表与详情 |
-| POST | `/api/admin/orders/:orderId/confirm`、`cancel` | 合法状态迁移和库存处理 |
-| GET | `/api/admin/operation-logs` | 只读分页审计日志 |
+| GET | `/api/admin/orders`、`/api/admin/orders/:orderId` | **已实现**：管理订单筛选分页、不可变明细与收货快照 |
+| POST | `/api/admin/orders/:orderId/confirm`、`cancel` | **已实现**：合法状态迁移、库存事务、幂等和审计 |
+| GET | `/api/admin/logs` | **已实现**：要求 `logs.read` 的只读分页审计日志 |
 | GET/POST/PATCH | `/api/admin/admin-users...` | 超管管理账号、角色、启停、密码重置和会话撤销 |
 
+#### 5.3.1 已实现的管理员认证边界
+
+- 所有 `/api/admin/*` 请求先校验云托管注入的 `x-wx-env/x-wx-appid/x-wx-source`；管理员仍使用独立账号密码，`x-wx-openid` 当前不参与管理员身份或角色判断。
+- 密码使用 Node.js 原生 `scrypt`、每个密码独立 16 字节随机盐和 64 字节派生值；数据库只保存带参数版本的哈希，禁止保存明文、可逆密文或前端演示密码。
+- 不存在账号也执行同等成本的虚拟密码校验；错误统一返回 `ADMIN_AUTH_FAILED`，避免通过响应判断用户名是否存在。
+- 单账号连续失败 5 次锁定 30 分钟；另以“用户名 + 请求 IP”的 SHA-256 范围键在数据库执行 15 分钟窗口限流，保证多容器实例共享限制。
+- 登录签发 256 位随机不透明 Token，客户端使用 `Authorization: Bearer`；数据库仅保存 SHA-256 Token 哈希。默认绝对有效期 2 小时。
+- `refresh` 在事务中旋转原会话 Token，旧 Token 立即无效；`logout` 写撤销时间。禁用管理员或角色后，既有 Token 下一请求即失效。
+- 当前系统角色为 `SUPER_ADMIN/OPERATOR/CONTENT_EDITOR`，权限为服务端 `module.action` 码；前端提交的 `role/adminId/permissions` 均被拒绝或忽略。
+- `GET /api/admin/logs` 已实现并要求 `logs.read`；登录成功/失败、刷新、注销均写入数据库操作日志，密码、Token、OpenID 和手机号在审计载荷中递归脱敏。
+- `npm run admin:security:cleanup` 删除七天前已过期/撤销会话及过期登录限流记录，建议生产环境每日执行。
+
+首个真实超级管理员只能通过受控命令创建，不提供无鉴权注册接口：
+
+```text
+ADMIN_BOOTSTRAP_USERNAME=自定义账号
+ADMIN_BOOTSTRAP_NAME=管理员显示名
+ADMIN_BOOTSTRAP_PASSWORD=至少12位且包含大小写字母、数字和符号
+npm run admin:bootstrap
+```
+
+命令只在系统没有任何管理员时创建一名 `SUPER_ADMIN`；成功后必须立即从本地和云托管环境移除 `ADMIN_BOOTSTRAP_PASSWORD`。后续管理员账号只能通过具备 `admins.write` 权限的管理 API 创建。
+
 商品编辑建议在一次事务中保存商品基础字段、完整 SKU 集合和有序图片关系，并携带 `version` 做乐观锁。合集、快捷分类、精选商品、Banner 排序同样使用“提交完整有序 ID 数组”的整体替换语义，不提供逐项无版本排序写入。
+
+#### 5.3.2 已实现的目录与库存边界
+
+- 分类和材质共用 `categories` 表但使用独立 `dimension`；名称在同一维度唯一。改名只变更展示字段，商品继续通过稳定 ID 关联，公共分类接口会立即读到新名称。
+- 分类删除执行商品、首页快捷入口和子分类引用检查；仍被引用时返回 `CATEGORY_IN_USE`。启停属于显式运营操作，禁用后公共浏览会同步过滤相关商品。
+- 商品新建和编辑在单事务内保存基础字段、1–6 张有序图库、主图、1–20 个 SKU、参数和结构化详情。SKU 可独立设置售价、划线价、低库存阈值和启停状态。
+- 新 SKU 允许设置一次 `initialStock` 并写 `INITIAL` 库存流水；已有 SKU 的编辑 DTO 禁止携带库存，避免绕过库存审计。编辑时未再提交的旧 SKU 会停用而不物理删除。
+- 商品写入使用 `products.version` 乐观锁；库存使用 `product_variants.version` 乐观锁。并发写入版本过期统一返回 `RESOURCE_VERSION_CONFLICT`。
+- 库存仅通过调整接口变更，支持 `PURCHASE/ADJUSTMENT/DAMAGE/OFFLINE_SALE/RETURN`，并校验方向、原因、备注及调整后库存不得低于已预占数量。
+- 上架要求启用的分类/材质、有效主图和至少一个启用且价格有效的 SKU。下架或软删除后公共接口立即不可见；软删除会清理首页精选、合集关系并将关联 Banner 改为不跳转。
+- 所有目录和库存写入都要求相应 RBAC 权限并写操作日志；数据库唯一键和外键冲突使用稳定 `409 CONFLICT` 响应。
+- `npm run api:verify-admin-catalog` 使用隔离夹具验证分类改名同步、引用保护、SKU 独立定价、乐观锁、上下架、库存流水、RBAC 与审计，并在结束后物理清理夹具。
+
+#### 5.3.3 已实现的管理首页与订单边界
+
+- `GET /api/admin/dashboard` 要求 `dashboard.read`，聚合有效用户、商品状态、低库存/售罄 SKU、待确认/已确认/今日订单金额，以及文章、合集和 Banner 数量；金额始终为整数分。
+- 管理订单列表要求 `orders.read`，支持 `status/page/pageSize/keyword/from/to`；关键字匹配订单号、收件人和手机号，日期采用带时区的 ISO 输入并由服务端规范化。
+- 管理详情只使用 `order_items` 和订单收货字段快照，不因商品改名、调价、下架或软删除改变历史订单展示。
+- `confirm` 要求 `orders.confirm`：仅待确认且未超时订单可确认；事务内锁定订单和相关 SKU，将 `on_hand` 与 `reserved` 同量扣减，写 `ORDER_CONFIRM` 流水、累计销量并置为 `CONFIRMED`。
+- `cancel` 要求 `orders.cancel` 和 2–100 字原因：仅待确认订单可取消；事务内只释放 `reserved`，写 `ORDER_RELEASE` 流水并置为 `CANCELLED`，不扣减实物库存。
+- 已确认订单重复确认、已取消订单重复取消返回原结果并标记幂等重放；其他非法状态迁移返回 409。操作时发现超时订单会先事务性释放预占并置为 `CLOSED`，随后返回不可确认/取消错误。
+- 管理订单写接口不接受前端提交的 `adminId/role/userId/openid/status` 等可信字段；操作者只来自服务端管理员会话，确认、取消和超时关闭均写脱敏审计日志。
+- 应用传入 MySQL 的 JavaScript `Date` 统一序列化为 UTC 数据库时间；订单过期以 `CURRENT_TIMESTAMP(3)` 判定，避免开发机、云容器与数据库时区不一致。
+- `npm run api:verify-admin-orders` 使用隔离夹具验证首页统计、查询、RBAC、确认/取消幂等、超时关闭、库存与销量、流水和审计，并在结束后清理夹具。
 
 ## 6. 查询参数规范
 
@@ -478,7 +668,8 @@
 | `inStock` | boolean | 商品列表 | 前台可筛有货；公开接口永远不返回草稿/已删除商品 |
 | `minPriceAmount/maxPriceAmount` | 非负整数分 | 商品列表 | 可选价格筛选，`min <= max` |
 | `tag` 或 `tagId` | string | 文章列表 | 第一版可用稳定 tag code，避免中文名称作为标识 |
-| `status` | enum | 用户订单/管理列表 | 用户订单只允许自己的可见状态；管理端按权限查询 |
+| `status` | enum | 用户订单/管理列表 | 用户订单只允许自己的可见状态；管理商品支持 `ALL/DRAFT/ON_SALE/OFF_SHELF/DELETED` |
+| `stockStatus` | enum | 管理商品列表 | `ALL/IN_STOCK/LOW_STOCK/SOLD_OUT`，以 SKU 实时可售库存计算 |
 | `from/to` | ISO 日期 | 订单、日志管理列表 | 使用闭区间并明确时区 |
 
 公开商品列表只返回 `ON_SALE` 商品。`OFF_SHELF` 不应因为客户端传入 `status` 而泄露；管理端使用独立接口查询全状态。
@@ -495,12 +686,12 @@
 6. 下单成功页按订单号从本地查找；没有真实支付，也不调用 `wx.requestPayment`。
 7. 普通用户可取消 `pending` 订单并恢复库存；管理员可确认为 `confirmed`，也可取消并恢复库存。
 
-### 7.2 正式后端必须修正的边界
+### 7.2 已落地的正式后端边界
 
 - 客户端只提交 `productId/variantId/quantity`，不得提交可信单价、合计、库存或状态。
-- `checkout/preview` 由后端重算价格、可售状态和库存，返回短时 `checkoutToken`、金额明细及变更提示。
-- 创建订单必须带 `Idempotency-Key`，后端在事务中预占 SKU 库存并写入订单与明细快照。
-- 当前无支付阶段的预占有效期固定为 24 小时；管理员确认后将预占转为正式扣减，用户取消或超时关闭时释放预占。
+- `checkout/preview` 已由后端重算价格、可售状态和库存，返回 10 分钟 `checkoutToken`、金额明细和地址候选。
+- 创建订单已强制请求头 `Idempotency-Key`，并在事务中预占 SKU 库存、写订单及明细快照。
+- 当前无支付阶段的预占有效期固定为 24 小时；用户取消或定时任务超时关闭时释放预占。管理员确认转为正式扣减、管理员取消释放预占均已实现。
 - 当前无支付资质时，订单应明确为“待人工确认/支付未启用”，不能返回“支付成功”。
 - 订单号由后端生成且全局唯一；下单成功页必须校验订单属于当前用户。
 
@@ -737,6 +928,8 @@ Banner 写入只接受：
 | 401 | `USER_IDENTITY_MISSING` | 云托管可信用户头缺失；个性化接口使用 |
 | 401 | `ADMIN_AUTH_FAILED` | 管理员账号或密码错误 |
 | 401 | `ADMIN_SESSION_EXPIRED` | 管理会话失效 |
+| 401 | `WECHAT_GATEWAY_UNTRUSTED` | 管理接口未经过已配置的可信云托管网关 |
+| 429 | `ADMIN_ACCOUNT_LOCKED` | 账号失败锁定或登录范围限流 |
 | 403 | `USER_DISABLED` | 普通用户被停用 |
 | 403 | `ADMIN_ACCOUNT_DISABLED` | 管理员被停用 |
 | 403 | `ADMIN_PERMISSION_DENIED` | 管理员无模块/动作权限 |
@@ -746,9 +939,13 @@ Banner 写入只接受：
 | 409 | `PRODUCT_OFF_SHELF`、`PRODUCT_SOLD_OUT` | 商品不可购买 |
 | 409 | `VARIANT_DISABLED` | 所选 SKU 已停用或不可购买 |
 | 409 | `PRODUCT_STOCK_INSUFFICIENT` | SKU 库存不足 |
-| 409 | `PRODUCT_PRICE_CHANGED` | 预览后价格发生变化 |
-| 409 | `CHECKOUT_TOKEN_EXPIRED` | 结算预览令牌过期 |
-| 409 | `ORDER_STATUS_CONFLICT` | 当前状态不能取消/确认/发货 |
+| 409 | `FAVORITE_NOT_AVAILABLE` | 商品当前不可新增收藏 |
+| 409 | `CHECKOUT_EMPTY`、`CHECKOUT_ITEM_INVALID` | 结算项为空、不属于用户或实时不可购买 |
+| 409 | `CHECKOUT_CHANGED` | 预览后价格发生变化，必须重新预览 |
+| 409 | `CHECKOUT_TOKEN_INVALID` | 结算预览令牌无效、已使用或过期 |
+| 409 | `ORDER_NOT_CANCELLABLE` | 当前订单状态不能由用户或管理员取消 |
+| 409 | `ORDER_NOT_CONFIRMABLE` | 当前订单已超时或状态不允许管理员确认 |
+| 400 | `IDEMPOTENCY_KEY_REQUIRED` | 下单缺少或错误的幂等请求头 |
 | 409 | `DUPLICATE_RESOURCE` | 唯一字段重复，如管理员账号 |
 | 409 | `RESOURCE_VERSION_CONFLICT` | 管理员编辑期间记录已被他人更新 |
 | 409 | `MEDIA_IN_USE` | 图片仍被商品、Banner、合集或文章引用 |
@@ -883,9 +1080,11 @@ Banner 写入只接受：
 1. 建立统一 DTO、请求封装和环境配置，接入第 13 节公共只读接口。
 2. 接入可信 OpenID 用户识别及 `/me`，迁移收藏和个人中心统计。
 3. 接入购物车和地址 CRUD。
-4. 接入结算预览、幂等下单、库存事务和当前“人工确认”订单流。
-5. 接入管理员账号、RBAC、商品/SKU/库存、内容和订单管理 API。
-6. 资质完成后再启用微信支付、退款和发货；以服务端回调和状态机为准。
+4. 已完成结算预览、幂等下单、库存预占/释放和用户订单查询/取消。
+5. 已完成管理员认证、系统角色、RBAC、会话、只读操作日志，以及分类/材质、商品/SKU 生命周期和库存流水管理 API。
+6. 已完成管理首页聚合、管理订单筛选/详情、订单确认正式扣减、取消/超时释放预占、幂等和审计。
+7. 下一子阶段接入媒体、文章、合集、Banner 和首页配置，再实现管理员账号管理，随后将小程序模拟数据边界切换为真实 API。
+8. 资质完成后再启用微信支付、退款和发货；以服务端回调和状态机为准。
 
 ## 15. 已确认的业务规则
 
@@ -914,13 +1113,12 @@ Banner 写入只接受：
 
 ## 16. 后端开工条件与上线验收门槛
 
-### 16.1 开工前需要具备
+### 16.1 当前工程与下一阶段前置条件
 
-- 将现有微信云托管 Express 源码加入当前工作区或提供明确的独立后端工作区；当前工作区只有原型和小程序，本文不会假定不存在的后端目录结构。
-- 明确 Node.js 运行版本、Express 启动命令、云托管监听端口和 `express-zaiy` 所在环境；配置通过环境变量注入，不把凭据写入仓库。
-- MySQL 建议使用 8.0、`utf8mb4`、UTC 存储时间，并建立可重复执行的 migration/rollback 流程；开发、测试、生产数据库严格分离。
+- 后端源码位于独立目录 `D:\Projects\wechat-hjy1`，Node.js 22、Express 启动命令、云托管监听端口和 `express-zaiy` 路由配置均已落地；凭据只通过未提交的 `.env` 或云托管环境变量注入。
+- `wenwan_mall` 已连接并完成 6 个前向迁移，当前共 32 张业务表；时间按 UTC 写入并由数据库时钟处理过期规则。开发、测试、生产数据库仍须严格分离。
 - 选定对象存储/CDN。若暂未确定供应商，先定义 `MediaStorage` 接口，将上传、删除、生成 URL 与业务层解耦。
-- 管理员第一版建议使用高熵随机不透明 Token：数据库仅保存 Token 哈希、过期和撤销时间；客户端通过 `Authorization: Bearer` 携带，不使用可长期有效且难撤销的自包含 JWT。
+- 管理员认证已使用高熵随机不透明 Token：数据库仅保存 Token 哈希、过期和撤销时间；客户端通过 `Authorization: Bearer` 携带，不使用可长期有效且难撤销的自包含 JWT。
 - 创建 `.env.example` 只列变量名，例如数据库、云环境、媒体存储和会话密钥；任何真实密钥、AppSecret、OpenID、数据库密码不得写入代码或文档。
 
 ### 16.2 每批接口的最低验收

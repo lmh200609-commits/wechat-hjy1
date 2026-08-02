@@ -1,0 +1,37 @@
+const express = require("express");
+const controller = require("../controllers/me.controller");
+const cartController = require("../controllers/cart.controller");
+const addressController = require("../controllers/address.controller");
+const favoriteController = require("../controllers/favorite.controller");
+const orderController = require("../controllers/order.controller");
+const asyncHandler = require("../middleware/async-handler");
+const { createWechatUserMiddleware } = require("../middleware/wechat-user");
+const validate = require("../middleware/validate");
+const validators = require("../validators/user.validators");
+
+const router = express.Router();
+
+router.use(asyncHandler(createWechatUserMiddleware()));
+router.get("/", controller.getMe);
+router.get("/summary", asyncHandler(controller.getSummary));
+router.get("/cart", asyncHandler(cartController.getCart));
+router.post("/cart/items", validate(validators.cartAdd), asyncHandler(cartController.addItem));
+router.patch("/cart/items/:itemId", validate(validators.cartItemPatch), asyncHandler(cartController.updateItem));
+router.delete("/cart/items/:itemId", validate(validators.cartItemParam), asyncHandler(cartController.removeItem));
+router.patch("/cart/selection", validate(validators.cartSelection), asyncHandler(cartController.setSelection));
+router.get("/addresses", asyncHandler(addressController.getAddresses));
+router.post("/addresses", validate(validators.addressCreate), asyncHandler(addressController.createAddress));
+router.patch("/addresses/:addressId", validate(validators.addressPatch), asyncHandler(addressController.updateAddress));
+router.delete("/addresses/:addressId", validate(validators.addressParam), asyncHandler(addressController.removeAddress));
+router.put("/addresses/:addressId/default", validate(validators.addressParam), asyncHandler(addressController.setDefault));
+router.get("/favorites", validate(validators.favoriteList), asyncHandler(favoriteController.getFavorites));
+router.put("/favorites/:productId", validate(validators.favoriteParam), asyncHandler(favoriteController.putFavorite));
+router.delete("/favorites/:productId", validate(validators.favoriteParam), asyncHandler(favoriteController.removeFavorite));
+router.post("/checkout/preview", validate(validators.checkoutPreview), asyncHandler(orderController.preview));
+router.post("/orders", validate(validators.createOrder), asyncHandler(orderController.createOrder));
+router.get("/orders", validate(validators.orderList), asyncHandler(orderController.getOrders));
+router.get("/orders/by-no/:orderNo", validate(validators.orderNoParam), asyncHandler(orderController.getOrderByNo));
+router.get("/orders/:orderId", validate(validators.orderParam), asyncHandler(orderController.getOrder));
+router.post("/orders/:orderId/cancel", validate(validators.cancelOrder), asyncHandler(orderController.cancelOrder));
+
+module.exports = router;

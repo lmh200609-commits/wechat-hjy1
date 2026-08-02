@@ -20,6 +20,9 @@
   ],
   "envParams": {
     "MYSQL_DATABASE": "wenwan_mall",
+    "WECHAT_CLOUD_ENV_ID": "prod-d9g4jzwa5832354ed",
+    "WECHAT_MINIPROGRAM_APP_ID": "wx14a6f266208130dd",
+    "WECHAT_CLOUD_SERVICE_NAME": "express-zaiy",
     "DATABASE_REQUIRED": "true",
     "DB_CONNECT_ON_START": "true",
     "AUTO_MIGRATE": "false"

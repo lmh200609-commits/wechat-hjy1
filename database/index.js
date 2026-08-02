@@ -26,11 +26,7 @@ async function connect() {
     await sequelize.authenticate();
     connected = true;
     lastError = null;
-    logger.info("database_connected", {
-      host: env.database.host,
-      port: env.database.port,
-      database: env.database.name,
-    });
+    logger.info("database_connected");
     return true;
   } catch (error) {
     connected = false;

@@ -3,6 +3,9 @@ const cors = require("cors");
 
 const env = require("./config/env");
 const healthRoutes = require("./routes/health.routes");
+const publicRoutes = require("./routes/public.routes");
+const meRoutes = require("./routes/me.routes");
+const adminRoutes = require("./routes/admin.routes");
 const requestContext = require("./middleware/request-context");
 const requestLogger = require("./middleware/request-logger");
 const responseMiddleware = require("./middleware/response");
@@ -47,6 +50,9 @@ app.get("/", (req, res) => res.success({
 }));
 
 app.use("/health", healthRoutes);
+app.use("/api/v1/me", meRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/v1", publicRoutes);
 
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
