@@ -259,11 +259,12 @@ function createAdminCatalogRepository({ sequelize = database.sequelize, transact
       INSERT INTO products (
         code, name, subtitle, category_id, material_id, craft, price_amount,
         original_price_amount, currency, sale_status, sales_count, low_stock_threshold,
-        tags_json, attributes_json, detail_sections_json, version, created_at, updated_at
+        tags_json, attributes_json, detail_sections_json, published_at, version, created_at, updated_at
       ) VALUES (
         :code, :name, :subtitle, :categoryId, :materialId, :craft, :priceAmount,
-        :originalPriceAmount, 'CNY', 'DRAFT', 0, :lowStockThreshold,
-        :tagsJson, :attributesJson, :detailSectionsJson, 1,
+        :originalPriceAmount, 'CNY', :saleStatus, 0, :lowStockThreshold,
+        :tagsJson, :attributesJson, :detailSectionsJson,
+        CASE WHEN :saleStatus = 'ON_SALE' THEN CURRENT_TIMESTAMP(3) ELSE NULL END, 1,
         CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3)
       )
     `, options(input));

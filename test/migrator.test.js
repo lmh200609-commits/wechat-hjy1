@@ -18,6 +18,7 @@ test("migration discovery ignores documentation and sorts migration files", () =
     "20260802130000-add-cloudbase-media-and-content-versions.js",
     "20260802131000-allow-incomplete-article-drafts.js",
     "20260803120000-add-cos-media-provider.js",
+    "20260803160000-create-admin-idempotency-records.js",
   ]);
   for (const { migration } of migrations) assert.equal(typeof migration.up, "function");
 });

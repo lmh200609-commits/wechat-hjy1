@@ -11,6 +11,7 @@ function createMockStorage({ files = new Map() } = {}) {
       files.delete(fileID);
       return { deleted: true };
     },
+    resolveReadUrl(value) { return value; },
   };
 }
 

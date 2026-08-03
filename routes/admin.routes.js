@@ -16,6 +16,9 @@ const { createWechatGatewayMiddleware } = require("../middleware/wechat-user");
 const { createAdminAuthMiddleware, requireAdminPermission } = require("../middleware/admin-auth");
 const adminUserController = require("../controllers/admin-user.controller");
 const adminUserValidators = require("../validators/admin-user.validators");
+const { createAdminIdempotencyMiddleware } = require("../middleware/admin-idempotency");
+
+const idempotent = (scope) => asyncHandler(createAdminIdempotencyMiddleware(scope));
 
 const router = express.Router();
 
@@ -31,17 +34,17 @@ router.get("/dashboard", requireAdminPermission("dashboard.read"), asyncHandler(
 
 router.get("/admin-roles", requireAdminPermission("admins.read"), asyncHandler(adminUserController.roles));
 router.get("/admin-users", requireAdminPermission("admins.read"), asyncHandler(adminUserController.users));
-router.post("/admin-users", requireAdminPermission("admins.write"), validate(adminUserValidators.create), asyncHandler(adminUserController.create));
+router.post("/admin-users", requireAdminPermission("admins.write"), validate(adminUserValidators.create), idempotent("admin-user:create"), asyncHandler(adminUserController.create));
 router.patch("/admin-users/:adminUserId", requireAdminPermission("admins.write"), validate(adminUserValidators.update), asyncHandler(adminUserController.update));
 
 router.get("/categories", requireAdminPermission("categories.read"), validate(catalogValidators.categoryList), asyncHandler(catalogController.categories));
-router.post("/categories", requireAdminPermission("categories.write"), validate(catalogValidators.categoryCreate), asyncHandler(catalogController.createCategory));
+router.post("/categories", requireAdminPermission("categories.write"), validate(catalogValidators.categoryCreate), idempotent("category:create"), asyncHandler(catalogController.createCategory));
 router.put("/categories/reorder", requireAdminPermission("categories.write"), validate(catalogValidators.categoryReorder), asyncHandler(catalogController.reorderCategories));
 router.patch("/categories/:categoryId", requireAdminPermission("categories.write"), validate(catalogValidators.categoryUpdate), asyncHandler(catalogController.updateCategory));
 router.delete("/categories/:categoryId", requireAdminPermission("categories.write"), validate(catalogValidators.categoryId), asyncHandler(catalogController.deleteCategory));
 
 router.get("/products", requireAdminPermission("products.read"), validate(catalogValidators.productList), asyncHandler(catalogController.products));
-router.post("/products", requireAdminPermission("products.write"), validate(catalogValidators.productCreate), asyncHandler(catalogController.createProduct));
+router.post("/products", requireAdminPermission("products.write"), validate(catalogValidators.productCreate), idempotent("product:create"), asyncHandler(catalogController.createProduct));
 router.get("/products/:productId", requireAdminPermission("products.read"), validate(catalogValidators.productId), asyncHandler(catalogController.product));
 router.patch("/products/:productId", requireAdminPermission("products.write"), validate(catalogValidators.productUpdate), asyncHandler(catalogController.updateProduct));
 router.delete("/products/:productId", requireAdminPermission("products.write"), validate(catalogValidators.productId), asyncHandler(catalogController.deleteProduct));
@@ -49,26 +52,26 @@ router.post("/products/:productId/on-sale", requireAdminPermission("products.wri
 router.post("/products/:productId/off-shelf", requireAdminPermission("products.write"), validate(catalogValidators.productId), asyncHandler(catalogController.unpublishProduct));
 
 router.get("/variants/:variantId/inventory-movements", requireAdminPermission("inventory.read"), validate(catalogValidators.inventoryMovements), asyncHandler(catalogController.inventoryMovements));
-router.post("/variants/:variantId/inventory-adjustments", requireAdminPermission("inventory.adjust"), validate(catalogValidators.inventoryAdjustment), asyncHandler(catalogController.adjustInventory));
+router.post("/variants/:variantId/inventory-adjustments", requireAdminPermission("inventory.adjust"), validate(catalogValidators.inventoryAdjustment), idempotent("inventory:adjust"), asyncHandler(catalogController.adjustInventory));
 
 router.get("/media", requireAdminPermission("media.write"), validate(mediaValidators.list), asyncHandler(mediaController.list));
-router.post("/media/images", requireAdminPermission("media.write"), uploadImage, asyncHandler(mediaController.upload));
+router.post("/media/images", requireAdminPermission("media.write"), uploadImage, idempotent("media:upload"), asyncHandler(mediaController.upload));
 router.delete("/media/:mediaId", requireAdminPermission("media.write"), validate(mediaValidators.id), asyncHandler(mediaController.remove));
 
 router.get("/articles", requireAdminPermission("articles.read"), validate(contentValidators.articleList), asyncHandler(contentController.listArticles));
-router.post("/articles", requireAdminPermission("articles.write"), validate(contentValidators.articleCreate), asyncHandler(contentController.createArticle));
+router.post("/articles", requireAdminPermission("articles.write"), validate(contentValidators.articleCreate), idempotent("article:create"), asyncHandler(contentController.createArticle));
 router.get("/articles/:articleId", requireAdminPermission("articles.read"), validate(contentValidators.articleId), asyncHandler(contentController.getArticle));
 router.patch("/articles/:articleId", requireAdminPermission("articles.write"), validate(contentValidators.articleUpdate), asyncHandler(contentController.updateArticle));
 router.delete("/articles/:articleId", requireAdminPermission("articles.write"), validate(contentValidators.articleId), asyncHandler(contentController.deleteArticle));
 
 router.get("/collections", requireAdminPermission("collections.read"), validate(contentValidators.collectionList), asyncHandler(contentController.listCollections));
-router.post("/collections", requireAdminPermission("collections.write"), validate(contentValidators.collectionCreate), asyncHandler(contentController.createCollection));
+router.post("/collections", requireAdminPermission("collections.write"), validate(contentValidators.collectionCreate), idempotent("collection:create"), asyncHandler(contentController.createCollection));
 router.get("/collections/:collectionId", requireAdminPermission("collections.read"), validate(contentValidators.collectionId), asyncHandler(contentController.getCollection));
 router.patch("/collections/:collectionId", requireAdminPermission("collections.write"), validate(contentValidators.collectionUpdate), asyncHandler(contentController.updateCollection));
 router.delete("/collections/:collectionId", requireAdminPermission("collections.write"), validate(contentValidators.collectionId), asyncHandler(contentController.deleteCollection));
 
 router.get("/banners", requireAdminPermission("homepage.read"), validate(contentValidators.bannerList), asyncHandler(contentController.listBanners));
-router.post("/banners", requireAdminPermission("homepage.write"), validate(contentValidators.bannerCreate), asyncHandler(contentController.createBanner));
+router.post("/banners", requireAdminPermission("homepage.write"), validate(contentValidators.bannerCreate), idempotent("banner:create"), asyncHandler(contentController.createBanner));
 router.put("/banners/reorder", requireAdminPermission("homepage.write"), validate(contentValidators.bannerReorder), asyncHandler(contentController.reorderBanners));
 router.get("/banners/:bannerId", requireAdminPermission("homepage.read"), validate(contentValidators.bannerId), asyncHandler(contentController.getBanner));
 router.patch("/banners/:bannerId", requireAdminPermission("homepage.write"), validate(contentValidators.bannerUpdate), asyncHandler(contentController.updateBanner));

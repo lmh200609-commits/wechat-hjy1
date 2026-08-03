@@ -292,10 +292,10 @@ function createAdminCatalogService({
 
   async function createProduct(input, context, meta) {
     const productId = await transaction(async (repository) => {
-      await assertProductRelations(repository, input);
+      await assertProductRelations(repository, input, input.publish);
       const code = randomCode("P");
       const persisted = productPersistedInput(input);
-      const id = await repository.insertProduct({ ...persisted, code });
+      const id = await repository.insertProduct({ ...persisted, code, saleStatus: input.publish ? "ON_SALE" : "DRAFT" });
       await saveVariants(repository, id, { ...input, productCode: code }, context);
       await repository.replaceProductImages(id, input.imageMediaIds, input.primaryMediaId, input.name);
       await repository.refreshReferenceState([
@@ -307,6 +307,13 @@ function createAdminCatalogService({
         targetType: "PRODUCT", targetId: id, targetLabel: input.name,
         after: { ...input, code },
       });
+      if (input.publish) {
+        await writeAudit(repository, {
+          ...auditMeta(context, meta), module: "products", action: "PRODUCT_PUBLISHED",
+          targetType: "PRODUCT", targetId: id, targetLabel: input.name,
+          before: { saleStatus: "DRAFT" }, after: { saleStatus: "ON_SALE" },
+        });
+      }
       return id;
     });
     return getProduct(productId);
@@ -319,7 +326,8 @@ function createAdminCatalogService({
       if (number(row.version) !== input.version) {
         error(ERROR_CODES.RESOURCE_VERSION_CONFLICT, "Product was modified by another request", 409, { currentVersion: number(row.version) });
       }
-      await assertProductRelations(repository, input, row.sale_status === "ON_SALE");
+      const shouldBeOnSale = input.publish === undefined ? row.sale_status === "ON_SALE" : input.publish;
+      await assertProductRelations(repository, input, shouldBeOnSale);
       const existing = await repository.findProductVariants(row.id, true);
       const existingImages = await repository.findProductImages(row.id);
       const previousDetailMediaIds = parseJson(row.detail_sections_json, [])
@@ -329,6 +337,8 @@ function createAdminCatalogService({
       await saveVariants(repository, row.id, { ...input, productCode: row.code }, context, existing);
       await repository.replaceProductImages(row.id, input.imageMediaIds, input.primaryMediaId, input.name);
       await repository.updateProduct(row.id, persisted);
+      const targetStatus = input.publish === undefined ? row.sale_status : (input.publish ? "ON_SALE" : "OFF_SHELF");
+      if (row.sale_status !== targetStatus) await repository.setProductSaleStatus(row.id, targetStatus);
       await repository.refreshReferenceState([
         ...existingImages.map((image) => image.media_id),
         ...previousDetailMediaIds,
@@ -338,8 +348,16 @@ function createAdminCatalogService({
       await writeAudit(repository, {
         ...auditMeta(context, meta), module: "products", action: "PRODUCT_UPDATED",
         targetType: "PRODUCT", targetId: row.id, targetLabel: input.name,
-        before: productSummaryDto(row), after: { ...input, version: input.version + 1 },
+        before: productSummaryDto(row), after: { ...input, version: input.version + (row.sale_status !== targetStatus ? 2 : 1) },
       });
+      if (row.sale_status !== targetStatus) {
+        await writeAudit(repository, {
+          ...auditMeta(context, meta), module: "products",
+          action: targetStatus === "ON_SALE" ? "PRODUCT_PUBLISHED" : "PRODUCT_UNPUBLISHED",
+          targetType: "PRODUCT", targetId: row.id, targetLabel: input.name,
+          before: { saleStatus: row.sale_status }, after: { saleStatus: targetStatus },
+        });
+      }
     });
     return getProduct(input.productId);
   }

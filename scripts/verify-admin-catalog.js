@@ -141,9 +141,11 @@ async function main() {
       ],
       attributes: [{ label: "材质", value: "印度小叶紫檀" }],
       detailSections: [{ id: "intro", type: "PARAGRAPH", text: "验证商品详情结构化内容" }],
+      publish: true,
     };
+    const productOperationKey = `catalog-product-${suffix}-0001`;
     const created = await jsonRequest(`${baseUrl}/api/admin/products`, {
-      method: "POST", headers: authHeaders, body: createBody,
+      method: "POST", headers: { ...authHeaders, "Idempotency-Key": productOperationKey }, body: createBody,
     });
     assert.equal(created.response.status, 201);
     const product = created.body.data;
@@ -152,18 +154,19 @@ async function main() {
     assert.deepEqual(product.variants.map((item) => item.onHandQuantity), [10, 5]);
     assert.equal(product.minPriceAmount, 168000);
     assert.equal(product.version, 1);
+    assert.equal(product.saleStatus, "ON_SALE");
+
+    const replayed = await jsonRequest(`${baseUrl}/api/admin/products`, {
+      method: "POST", headers: { ...authHeaders, "Idempotency-Key": productOperationKey }, body: createBody,
+    });
+    assert.equal(replayed.response.status, 201);
+    assert.equal(replayed.body.data.id, product.id);
 
     const inUse = await jsonRequest(`${baseUrl}/api/admin/categories/${productCategory.id}`, {
       method: "DELETE", headers: authHeaders,
     });
     assert.equal(inUse.response.status, 409);
     assert.equal(inUse.body.code, "CATEGORY_IN_USE");
-
-    const publish = await jsonRequest(`${baseUrl}/api/admin/products/${product.id}/on-sale`, {
-      method: "POST", headers: authHeaders, body: {},
-    });
-    assert.equal(publish.response.status, 200);
-    assert.equal(publish.body.data.saleStatus, "ON_SALE");
 
     const publicProduct = await jsonRequest(`${baseUrl}/api/v1/products/${product.id}`);
     assert.equal(publicProduct.response.status, 200);
@@ -193,7 +196,7 @@ async function main() {
     assert.equal(stale.response.status, 409);
     assert.equal(stale.body.code, "RESOURCE_VERSION_CONFLICT");
 
-    const currentAfterPublish = publish.body.data;
+    const currentAfterPublish = product;
     const updated = await jsonRequest(`${baseUrl}/api/admin/products/${product.id}`, {
       method: "PATCH", headers: authHeaders, body: updateBody(currentAfterPublish.version),
     });
@@ -268,6 +271,7 @@ async function main() {
       if (categoryIds.length) await database.sequelize.query("DELETE FROM categories WHERE id IN (:categoryIds)", { replacements: { categoryIds } });
       if (mediaIds.length) await database.sequelize.query("DELETE FROM media_assets WHERE id IN (:mediaIds)", { replacements: { mediaIds } });
       if (adminIds.length) {
+        await database.sequelize.query("DELETE FROM admin_idempotency_records WHERE admin_user_id IN (:adminIds)", { replacements: { adminIds } });
         await database.sequelize.query("DELETE FROM admin_sessions WHERE admin_user_id IN (:adminIds)", { replacements: { adminIds } });
         await database.sequelize.query("DELETE FROM admin_operation_logs WHERE admin_user_id IN (:adminIds)", { replacements: { adminIds } });
         await database.sequelize.query("DELETE FROM admin_users WHERE id IN (:adminIds)", { replacements: { adminIds } });

@@ -22,6 +22,18 @@ function publicObjectUrl({ bucket, region, cloudPath }) {
   return `https://${bucket}.cos.${region}.myqcloud.com/${encodeObjectKey(cloudPath)}`;
 }
 
+function objectKeyFromUrl(value, bucket, region) {
+  if (typeof value !== "string" || !value) return null;
+  const expectedHost = `${bucket}.cos.${region}.myqcloud.com`;
+  try {
+    const parsed = new URL(value);
+    if (parsed.hostname !== expectedHost) return null;
+    return parsed.pathname.split("/").filter(Boolean).map(decodeURIComponent).join("/");
+  } catch (error) {
+    return null;
+  }
+}
+
 function invoke(client, method, params) {
   return new Promise((resolve, reject) => {
     client[method](params, (error, result) => {
@@ -37,6 +49,7 @@ function createCosStorage({
   secretId,
   secretKey,
   sessionToken,
+  readUrlTtlSeconds = 3600,
   client,
   Cos,
 } = {}) {
@@ -71,6 +84,21 @@ function createCosStorage({
     };
   }
 
+  function readUrl(value) {
+    const cloudPath = objectKeyFromUrl(value, bucket, region);
+    if (!cloudPath) return value;
+    const object = target(cloudPath);
+    const authorization = getClient().getAuth({
+      ...object,
+      Method: "GET",
+      Expires: readUrlTtlSeconds,
+    });
+    const token = sessionToken
+      ? `&x-cos-security-token=${encodeURIComponent(sessionToken)}`
+      : "";
+    return `${publicObjectUrl({ bucket: object.Bucket, region: object.Region, cloudPath })}?${authorization}${token}`;
+  }
+
   return {
     provider: "COS",
     async upload({ cloudPath, buffer, mimeType }) {
@@ -91,7 +119,8 @@ function createCosStorage({
       await invoke(getClient(), "deleteObject", object);
       return { deleted: true };
     },
+    resolveReadUrl: readUrl,
   };
 }
 
-module.exports = { createCosStorage, publicObjectUrl, encodeObjectKey };
+module.exports = { createCosStorage, publicObjectUrl, objectKeyFromUrl, encodeObjectKey };

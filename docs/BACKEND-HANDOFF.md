@@ -363,7 +363,7 @@
 |---|---|---:|---|
 | `id` | BIGINT / string | 是 | 媒体 ID，业务写接口只提交此 ID |
 | `object_key` | VARCHAR(512) / 不直接下发 | 是 | 旧数据兼容键；新数据与 `cloud_path` 相同 |
-| `file_id` | VARCHAR(512) / string | 新数据是 | COS 公有读稳定 HTTPS 地址；公共读接口以此作为媒体定位值，不保存临时签名 URL |
+| `file_id` | VARCHAR(512) / string | 新数据是 | COS 对象的稳定 HTTPS 定位值，仅用于服务端识别；COS 保持私有读时，API 响应层按 `cloud_path` 动态生成短期 GET 签名 URL，签名 URL 不落库 |
 | `cloud_path` | VARCHAR(512) / string | 新数据是 | COS 对象 Key，随机生成且唯一 |
 | `storage_provider` | ENUM / string | 是 | 新上传使用 `COS`；兼容 `CLOUDBASE`、`MOCK` 和旧数据 `LEGACY_EXTERNAL` |
 | `original_filename` | VARCHAR(255) / string | 否 | 仅用于管理展示与审计，不参与对象路径 |
@@ -936,7 +936,8 @@ Banner 写入只接受：
 - HTTP 状态码表达协议层结果，业务 `code` 供前端稳定分支；不要所有错误都返回 HTTP 200。
 - `message` 可直接展示但不能包含内部堆栈、SQL、OpenID、Token 或敏感配置。
 - `requestId` 应贯穿云托管、Express 日志和管理操作日志。
-- 创建订单等写操作使用请求头 `Idempotency-Key`；重复请求返回同一业务结果。
+- 创建订单以及管理员媒体上传、新增商品、文章、合集、Banner、分类、管理员账号和库存调整使用请求头 `Idempotency-Key`；管理员端幂等记录按管理员、操作范围和键隔离，重复请求返回同一业务结果，不重复写入。
+- 管理员商品表单的“保存并上架/保存并下架”与商品数据在同一事务完成，不再由前端串行执行“创建后再上架”两次请求。
 
 ## 12. 错误码需求
 

@@ -173,7 +173,7 @@ function contentBlocks(value, field) {
 }
 
 function productPayload(body, updating) {
-  const allowed = new Set(["version", "name", "subtitle", "categoryId", "materialId", "craft", "tags", "imageMediaIds", "primaryMediaId", "variants", "attributes", "detailSections"]);
+  const allowed = new Set(["version", "name", "subtitle", "categoryId", "materialId", "craft", "tags", "imageMediaIds", "primaryMediaId", "variants", "attributes", "detailSections", "publish"]);
   const extra = exactKeys(body, allowed);
   if (extra) return extra;
   const value = {};
@@ -264,6 +264,9 @@ function productPayload(body, updating) {
   }
   value.detailSections = contentBlocks(body.detailSections || [], "detailSections");
   if (value.detailSections.valid === false) return value.detailSections;
+  value.publish = boolean(body.publish, "publish", true);
+  if (value.publish?.valid === false) return value.publish;
+  if (value.publish === undefined && !updating) value.publish = false;
   return { valid: true, value };
 }
 

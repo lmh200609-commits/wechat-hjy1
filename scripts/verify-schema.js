@@ -28,6 +28,7 @@ const requiredTables = {
   admin_sessions: ["id", "admin_user_id", "token_hash", "expires_at", "revoked_at"],
   admin_login_guards: ["scope_hash", "attempt_count", "window_started_at", "blocked_until", "expires_at"],
   admin_operation_logs: ["id", "admin_user_id", "module", "action", "request_id"],
+  admin_idempotency_records: ["id", "admin_user_id", "scope", "idempotency_key", "request_hash", "status", "expires_at"],
   media_assets: ["id", "object_key", "file_id", "cloud_path", "storage_provider", "mime_type", "byte_size", "sha256", "reference_count", "reference_status", "status"],
   home_settings: ["id", "featured_title", "version", "updated_by_admin_id"],
   home_quick_categories: ["category_id", "icon_text", "sort_order"],

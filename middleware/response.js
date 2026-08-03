@@ -1,4 +1,5 @@
 const ERROR_CODES = require("../constants/error-codes");
+const { resolveStorageUrls } = require("../storage");
 
 function responseMiddleware(req, res, next) {
   res.success = function success(
@@ -11,7 +12,7 @@ function responseMiddleware(req, res, next) {
       success: true,
       code,
       message,
-      data,
+      data: resolveStorageUrls(data),
       requestId: req.requestId,
       timestamp: new Date().toISOString(),
     });

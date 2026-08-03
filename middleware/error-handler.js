@@ -73,15 +73,20 @@ function errorHandlerMiddleware(error, req, res, next) {
     });
   }
 
-  return res.status(statusCode).json({
-    success: false,
-    code,
-    message: expose ? normalizedError.message : "Internal server error",
-    data: null,
-    details: expose ? normalizedError.details : undefined,
-    requestId: req.requestId,
-    timestamp: new Date().toISOString(),
-  });
+  const send = () => res.status(statusCode).json({
+      success: false,
+      code,
+      message: expose ? normalizedError.message : "Internal server error",
+      data: null,
+      details: expose ? normalizedError.details : undefined,
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+
+  if (req.idempotency && !req.idempotency.completed && statusCode < 500) {
+    return req.idempotency.release().then(send, send);
+  }
+  return send();
 }
 
 module.exports = errorHandlerMiddleware;

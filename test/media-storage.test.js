@@ -4,7 +4,8 @@ const express = require("express");
 
 process.env.NODE_ENV = "test";
 const { createMockStorage } = require("../storage/mock-storage");
-const { createCosStorage, publicObjectUrl } = require("../storage/cos-storage");
+const { createCosStorage, publicObjectUrl, objectKeyFromUrl } = require("../storage/cos-storage");
+const { resolveStorageUrls } = require("../storage");
 const { inspectImage } = require("../utils/image-metadata");
 const { decodeBase64Image, uploadImage } = require("../middleware/media-upload");
 
@@ -101,4 +102,38 @@ test("COS public URL uses the configured bucket and region", () => {
     region: "ap-shanghai",
     cloudPath: "wenwan/media/a.png",
   }), "https://wenwan-test-1250000000.cos.ap-shanghai.myqcloud.com/wenwan/media/a.png");
+});
+
+test("COS read URLs are signed at response time without changing stored object paths", () => {
+  const client = {
+    getAuth(input) {
+      assert.equal(input.Method, "GET");
+      assert.equal(input.Key, "wenwan/media/文玩 a.png");
+      assert.equal(input.Expires, 1800);
+      return "q-sign-algorithm=sha1&q-signature=test";
+    },
+  };
+  const storage = createCosStorage({
+    bucket: "wenwan-test-1250000000",
+    region: "ap-shanghai",
+    readUrlTtlSeconds: 1800,
+    client,
+  });
+  const stored = "https://wenwan-test-1250000000.cos.ap-shanghai.myqcloud.com/wenwan/media/%E6%96%87%E7%8E%A9%20a.png";
+  const resolved = storage.resolveReadUrl(stored);
+  assert.match(resolved, /q-signature=test/);
+  assert.match(resolved, /wenwan\/media\/%E6%96%87%E7%8E%A9%20a\.png\?/);
+  assert.equal(objectKeyFromUrl(stored, "wenwan-test-1250000000", "ap-shanghai"), "wenwan/media/文玩 a.png");
+});
+
+test("response media resolver signs nested COS URLs and leaves external URLs unchanged", () => {
+  const storage = {
+    resolveReadUrl(value) {
+      return value.startsWith("https://private.example/") ? `${value}?signed=1` : value;
+    },
+  };
+  assert.deepEqual(resolveStorageUrls({ imageUrl: "https://private.example/a.jpg", nested: [{ url: "https://other.example/b.jpg" }] }, storage), {
+    imageUrl: "https://private.example/a.jpg?signed=1",
+    nested: [{ url: "https://other.example/b.jpg" }],
+  });
 });

@@ -126,6 +126,7 @@ function parseEnv(source = process.env) {
     cloudPathPrefix: readString(source, "MEDIA_CLOUD_PATH_PREFIX", "wenwan/media").replace(/^\/+|\/+$/g, ""),
     maxBytes: readInteger(source, "MEDIA_MAX_BYTES", 8388608, { min: 1024, max: 20971520 }),
     maxPixels: readInteger(source, "MEDIA_MAX_PIXELS", 25000000, { min: 10000, max: 100000000 }),
+    readUrlTtlSeconds: readInteger(source, "MEDIA_READ_URL_TTL_SECONDS", 3600, { min: 300, max: 86400 }),
   };
   if (!["mock", "cos"].includes(mediaStorage.driver)) {
     throw new ConfigError("MEDIA_STORAGE_DRIVER must be mock or cos");
