@@ -3,6 +3,15 @@ const assert = require("node:assert/strict");
 
 const validators = require("../validators/user.validators");
 
+test("profile patch accepts only a nickname and an owned-avatar reference", () => {
+  assert.deepEqual(validators.profilePatch({
+    body: { nickname: "听松", avatarMediaId: "8" },
+  }).value, { nickname: "听松", avatarMediaId: "8" });
+  assert.equal(validators.profilePatch({ body: {} }).valid, false);
+  assert.equal(validators.profilePatch({ body: { nickname: "", avatarMediaId: "8" } }).valid, false);
+  assert.equal(validators.profilePatch({ body: { nickname: "听松", openid: "forged" } }).valid, false);
+});
+
 test("cart validators accept canonical SKU requests and reject client identity fields", () => {
   assert.deepEqual(validators.cartAdd({
     body: { productId: "10", variantId: "20", quantity: 2 },

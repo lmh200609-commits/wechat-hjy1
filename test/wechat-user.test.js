@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 process.env.NODE_ENV = "test";
 
 const { createWechatUserMiddleware, createWechatGatewayMiddleware } = require("../middleware/wechat-user");
+const requireCompleteUserProfile = require("../middleware/require-complete-user-profile");
 
 const config = {
   cloudEnvId: "prod-test-env",
@@ -96,4 +97,14 @@ test("administrator gateway validation does not require or trust an OpenID", () 
   middleware(req, {}, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   assert.equal(Object.hasOwn(req.wechatContext, "openid"), false);
+});
+
+test("transaction middleware requires a completed profile after trusted identity resolution", () => {
+  let nextCalled = false;
+  requireCompleteUserProfile({ user: { id: "42", profileComplete: true } }, {}, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  let received;
+  requireCompleteUserProfile({ user: { id: "42", profileComplete: false } }, {}, (error) => { received = error; });
+  assert.equal(received.code, "USER_PROFILE_REQUIRED");
+  assert.equal(received.statusCode, 403);
 });

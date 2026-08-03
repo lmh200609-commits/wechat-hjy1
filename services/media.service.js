@@ -91,6 +91,8 @@ function createMediaService({
           height: image.height,
           sha256: crypto.createHash("sha256").update(file.buffer).digest("hex"),
           adminId: context.admin.id,
+          userId: null,
+          purpose: "CATALOG",
         });
         const created = await repo.findById(id);
         await writeAudit(repo, {

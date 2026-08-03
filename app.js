@@ -43,7 +43,7 @@ app.use(express.urlencoded({ extended: false, limit: env.requestBodyLimit }));
 const jsonParser = express.json({ limit: env.requestBodyLimit });
 app.use((req, res, next) => {
   const isMediaJsonUpload = req.method === "POST"
-    && req.path === "/api/admin/media/images"
+    && ["/api/admin/media/images", "/api/v1/me/avatar"].includes(req.path)
     && req.is("application/json");
   if (isMediaJsonUpload) return next();
   return jsonParser(req, res, next);

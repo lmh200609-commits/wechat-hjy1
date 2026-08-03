@@ -1,6 +1,7 @@
 const AppError = require("../errors/app-error");
 const ERROR_CODES = require("../constants/error-codes");
 const createUserRepository = require("../repositories/user.repository");
+const { resolveStorageUrls } = require("../storage");
 
 function asNumber(value) {
   const number = Number(value);
@@ -15,10 +16,13 @@ function asIso(value) {
 
 function mapUser(row) {
   const createdAt = asIso(row.created_at);
+  const avatarUrl = row.avatar_file_id || row.avatar_url || null;
   return {
     id: row.id,
     nickname: row.nickname || null,
-    avatarUrl: row.avatar_url || null,
+    avatarUrl: avatarUrl ? resolveStorageUrls(avatarUrl) : null,
+    avatarMediaId: row.avatar_media_id || null,
+    profileComplete: Boolean(row.nickname && avatarUrl),
     status: row.status,
     memberSince: createdAt ? new Date(createdAt).getUTCFullYear() : null,
     createdAt,
@@ -57,7 +61,7 @@ function createUserService(repository = createUserRepository()) {
     };
   }
 
-  return { identify, getSummary };
+  return { identify, getSummary, mapUser };
 }
 
 module.exports = { createUserService, mapUser };

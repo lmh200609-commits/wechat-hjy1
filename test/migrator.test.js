@@ -19,6 +19,7 @@ test("migration discovery ignores documentation and sorts migration files", () =
     "20260802131000-allow-incomplete-article-drafts.js",
     "20260803120000-add-cos-media-provider.js",
     "20260803160000-create-admin-idempotency-records.js",
+    "20260804090000-add-user-profile-media.js",
   ]);
   for (const { migration } of migrations) assert.equal(typeof migration.up, "function");
 });

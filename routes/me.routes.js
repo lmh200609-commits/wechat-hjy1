@@ -4,8 +4,11 @@ const cartController = require("../controllers/cart.controller");
 const addressController = require("../controllers/address.controller");
 const favoriteController = require("../controllers/favorite.controller");
 const orderController = require("../controllers/order.controller");
+const profileController = require("../controllers/user-profile.controller");
 const asyncHandler = require("../middleware/async-handler");
 const { createWechatUserMiddleware } = require("../middleware/wechat-user");
+const requireCompleteUserProfile = require("../middleware/require-complete-user-profile");
+const { uploadImage } = require("../middleware/media-upload");
 const validate = require("../middleware/validate");
 const validators = require("../validators/user.validators");
 
@@ -13,6 +16,9 @@ const router = express.Router();
 
 router.use(asyncHandler(createWechatUserMiddleware()));
 router.get("/", controller.getMe);
+router.post("/avatar", uploadImage, asyncHandler(profileController.uploadAvatar));
+router.patch("/profile", validate(validators.profilePatch), asyncHandler(profileController.updateProfile));
+router.use(requireCompleteUserProfile);
 router.get("/summary", asyncHandler(controller.getSummary));
 router.get("/cart", asyncHandler(cartController.getCart));
 router.post("/cart/items", validate(validators.cartAdd), asyncHandler(cartController.addItem));

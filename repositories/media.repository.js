@@ -13,18 +13,20 @@ function createMediaRepository({ sequelize = database.sequelize, transaction } =
     original_filename, url, mime_type, CAST(byte_size AS CHAR) AS byte_size,
     CAST(width AS CHAR) AS width, CAST(height AS CHAR) AS height, sha256,
     CAST(reference_count AS CHAR) AS reference_count, reference_status, status,
-    CAST(created_by_admin_id AS CHAR) AS created_by_admin_id, created_at, updated_at, deleted_at`;
+    CAST(created_by_admin_id AS CHAR) AS created_by_admin_id,
+    CAST(created_by_user_id AS CHAR) AS created_by_user_id, purpose,
+    created_at, updated_at, deleted_at`;
 
   async function insert(input) {
     await query(`
       INSERT INTO media_assets (
         object_key, file_id, cloud_path, storage_provider, original_filename, url,
         mime_type, byte_size, width, height, sha256, reference_count, reference_status,
-        status, created_by_admin_id, created_at, updated_at
+        status, created_by_admin_id, created_by_user_id, purpose, created_at, updated_at
       ) VALUES (
         :cloudPath, :fileID, :cloudPath, :storageProvider, :originalFilename, NULL,
         :mimeType, :byteSize, :width, :height, :sha256, 0, 'UNREFERENCED',
-        'ACTIVE', :adminId, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3)
+        'ACTIVE', :adminId, :userId, :purpose, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3)
       )
     `, input);
     const rows = await query("SELECT CAST(LAST_INSERT_ID() AS CHAR) AS id", {}, QueryTypes.SELECT);
@@ -52,6 +54,7 @@ function createMediaRepository({ sequelize = database.sequelize, transaction } =
         + (SELECT COUNT(*) FROM banners WHERE image_media_id = :id)
         + (SELECT COUNT(*) FROM collections WHERE cover_media_id = :id AND deleted_at IS NULL)
         + (SELECT COUNT(*) FROM articles WHERE cover_media_id = :id AND deleted_at IS NULL)
+        + (SELECT COUNT(*) FROM users WHERE avatar_media_id = :id)
       ) AS reference_count
     `, { id }, QueryTypes.SELECT);
     const jsonSources = await query(`
