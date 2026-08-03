@@ -221,7 +221,7 @@ function productPayload(body, updating) {
   value.variants = [];
   for (let i = 0; i < body.variants.length; i += 1) {
     const variant = body.variants[i];
-    const variantExtra = exactKeys(variant, new Set(["id", "skuCode", "specLabel", "priceAmount", "originalPriceAmount", "initialStock", "lowStockThreshold", "enabled", "sortOrder"]), `variants[${i}]`);
+    const variantExtra = exactKeys(variant, new Set(["id", "skuCode", "specLabel", "priceAmount", "originalPriceAmount", "originPriceAmount", "initialStock", "lowStockThreshold", "enabled", "sortOrder"]), `variants[${i}]`);
     if (variantExtra) return variantExtra;
     const id = variant.id == null ? null : positiveId(variant.id, `variants[${i}].id`);
     if (id?.valid === false) return id;
@@ -233,7 +233,11 @@ function productPayload(body, updating) {
     if (specLabel.valid === false) return specLabel;
     const priceAmount = integer(variant.priceAmount, `variants[${i}].priceAmount`, { min: 1, max: Number.MAX_SAFE_INTEGER });
     if (priceAmount.valid === false) return priceAmount;
-    const originalPriceAmount = variant.originalPriceAmount == null ? null : integer(variant.originalPriceAmount, `variants[${i}].originalPriceAmount`, { min: priceAmount, max: Number.MAX_SAFE_INTEGER });
+    if (variant.originalPriceAmount != null && variant.originPriceAmount != null && variant.originalPriceAmount !== variant.originPriceAmount) {
+      return invalid(`variants[${i}].originalPriceAmount`, "originalPriceAmount conflicts with legacy originPriceAmount");
+    }
+    const originalPriceInput = variant.originalPriceAmount == null ? variant.originPriceAmount : variant.originalPriceAmount;
+    const originalPriceAmount = originalPriceInput == null ? null : integer(originalPriceInput, `variants[${i}].originalPriceAmount`, { min: priceAmount, max: Number.MAX_SAFE_INTEGER });
     if (originalPriceAmount?.valid === false) return originalPriceAmount;
     const initialStock = id ? undefined : integer(variant.initialStock ?? 0, `variants[${i}].initialStock`, { min: 0, max: 100000000 });
     if (initialStock?.valid === false) return initialStock;

@@ -44,6 +44,26 @@ test("admin product validator accepts independent SKU pricing and initial stock"
   assert.equal(result.value.primaryMediaId, "100");
 });
 
+test("admin product validator normalizes the legacy origin price field and accepts an empty original price", () => {
+  const legacy = productBody({
+    variants: [{ specLabel: "默认规格", priceAmount: 168000, originPriceAmount: 198000, initialStock: 10, enabled: true }],
+  });
+  const legacyResult = validators.productCreate({ body: legacy });
+  assert.equal(legacyResult.valid, true);
+  assert.equal(legacyResult.value.variants[0].originalPriceAmount, 198000);
+
+  const emptyResult = validators.productCreate({ body: productBody({
+    variants: [{ specLabel: "默认规格", priceAmount: 168000, originalPriceAmount: null, initialStock: 10, enabled: true }],
+  }) });
+  assert.equal(emptyResult.valid, true);
+  assert.equal(emptyResult.value.variants[0].originalPriceAmount, null);
+
+  const conflictResult = validators.productCreate({ body: productBody({
+    variants: [{ specLabel: "默认规格", priceAmount: 168000, originalPriceAmount: 188000, originPriceAmount: 198000, initialStock: 10, enabled: true }],
+  }) });
+  assert.equal(conflictResult.valid, false);
+});
+
 test("admin product validator rejects broken image and SKU contracts", () => {
   assert.equal(validators.productCreate({ body: productBody({ primaryMediaId: "999" }) }).valid, false);
   assert.equal(validators.productCreate({ body: productBody({ variants: [
